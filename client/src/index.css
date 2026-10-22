@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-surface: #ffffff; /* cards, inputs, menus */
+}
+
+/*
+  Dark mode: instead of adding a dark: class to every element, the neutral (stone) scale and the
+  light tints are re-mapped to dark values. Every component that uses these tokens switches automatically.
+*/
+.dark {
+  color-scheme: dark;
+  --color-surface: #1a1a19;
+
+  --color-stone-50: #111110;
+  --color-stone-100: #252523;
+  --color-stone-200: #2f2e2b;
+  --color-stone-300: #43413d;
+  --color-stone-400: #7a766f;
+  --color-stone-500: #a19d96;
+  --color-stone-600: #c3c2b7;
+  --color-stone-700: #d9d7d0;
+  --color-stone-800: #ebeae5;
+  --color-stone-900: #fafaf9;
+
+  --color-blue-50: #16263d;
+  --color-blue-100: #1c3352;
+  --color-blue-700: #8cbcf7;
+  --color-green-50: #0f2a1a;
+  --color-green-200: #1f4d31;
+  --color-green-700: #5ccf8a;
+  --color-green-800: #8be0ad;
+  --color-red-50: #331616;
+  --color-red-200: #5e2626;
+  --color-red-700: #f28b8b;
+  --color-red-800: #f6a9a9;
+  --color-amber-50: #33250f;
+  --color-amber-200: #5c4317;
+  --color-amber-700: #f2bd5c;
+  --color-amber-800: #f6cd85;
+}
+
+body {
+  @apply bg-stone-50 text-stone-900 antialiased;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-stone-200 bg-surface shadow-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply bg-blue-600 text-white hover:bg-blue-500;
+  }
+  .btn-secondary {
+    @apply border border-stone-300 bg-surface text-stone-700 hover:bg-stone-100;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-500;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-xs;
+  }
+  .icon-btn {
+    @apply rounded-md p-1.5 text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900
+      focus-visible:outline-2 focus-visible:outline-blue-600;
+  }
+  .input {
+    @apply block w-full rounded-lg border border-stone-300 bg-surface px-3 py-2 text-sm text-stone-900
+      placeholder:text-stone-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none
+      disabled:bg-stone-100 disabled:text-stone-500;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-stone-700;
+  }
+  .th {
+    @apply px-4 py-3 text-left text-xs font-medium tracking-wide text-stone-500 uppercase;
+  }
+  .td {
+    @apply px-4 py-3 text-sm whitespace-nowrap;
+  }
+  .section-title {
+    @apply text-sm font-semibold;
+  }
+}

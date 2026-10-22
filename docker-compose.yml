@@ -1,0 +1,35 @@
+# Run SubTrack with a local MongoDB:   docker compose up --build
+# Then open http://localhost:5000  (or the port in APP_PORT, e.g. APP_PORT=8080 docker compose up)
+# Seed demo data:   docker compose exec app node seed.js
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    # Optional keys (Gemini/Claude, Gmail SMTP, push, Google sign-in) are read from server/.env if it exists.
+    # The values under "environment" below take priority, so the app always uses the local MongoDB here.
+    env_file:
+      - path: ./server/.env
+        required: false
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/subtrack
+      CLIENT_URL: http://localhost:${APP_PORT:-5000}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-to-another-long-random-string}
+    volumes:
+      - uploads:/app/server/uploads
+
+volumes:
+  mongo-data:
+  uploads:

@@ -1,0 +1,51 @@
+{
+  "name": "subtrack-server",
+  "version": "2.0.0",
+  "description": "REST API for SubTrack - SaaS subscription & expense analytics",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/api.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
+    "express-validator": "^7.3.2",
+    "google-auth-library": "^11.2.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.11.1",
+    "multer": "^2.4.0",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.0.16",
+    "otplib": "^13.5.0",
+    "pdfkit": "^0.20.2",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.4",
+    "swagger-ui-express": "^5.0.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2",
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  }
+}
