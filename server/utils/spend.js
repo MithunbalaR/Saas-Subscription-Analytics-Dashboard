@@ -2,7 +2,7 @@ import Expense from "../models/Expense.js";
 import Workspace from "../models/Workspace.js";
 import { convert, formatMoney, getRates } from "./currency.js";
 import { monthRange, round2 } from "./billing.js";
-import { notifyUser } from "./notify.js";
+import { CONTACT_FIELDS, notifyUser } from "./notify.js";
 
 // Total spend per category between two dates, converted into the workspace's base currency.
 // Grouping by currency first lets MongoDB do the summing; conversion happens afterwards.
@@ -36,7 +36,7 @@ export const budgetUsage = (workspace, spend) => {
 // Called after money is spent: alerts every workspace member at 80% and 100% of a budget (once per month).
 export const checkBudgetAlerts = async (workspaceId) => {
   try {
-    const workspace = await Workspace.findById(workspaceId).populate("members.user", "name email emailReminders");
+    const workspace = await Workspace.findById(workspaceId).populate("members.user", CONTACT_FIELDS);
     if (!workspace) return;
     const { rates } = await getRates();
     const { start, end, key } = monthRange();
@@ -53,7 +53,7 @@ export const checkBudgetAlerts = async (workspaceId) => {
         await notifyUser(
           user,
           { type: "budget", title, message, link: "/", workspace: workspace._id, dedupeKey: `budget:${workspace._id}:${key}:${row.key}:${level}` },
-          { email: user.emailReminders }
+          { email: user.emailReminders, whatsapp: true }
         );
       }
     }

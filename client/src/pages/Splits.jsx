@@ -86,7 +86,7 @@ export default function Splits() {
                     <Avatar user={{ name: b.debtorName }} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{b.debtorName}</p>
-                      <p className="truncate text-xs text-stone-500">{b.debtorEmail || "no email saved"}</p>
+                      <p className="truncate text-xs text-stone-500">{[b.debtorEmail, b.debtorPhone].filter(Boolean).join(" · ") || "no email or phone saved"}</p>
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-stone-500">Owes you</p>
@@ -142,7 +142,13 @@ export default function Splits() {
                               </button>
                             ) : (
                               <>
-                                <button className="icon-btn" title={s.debtorEmail ? `Email ${s.debtorEmail} a reminder` : "Add an email in the subscription's split to send reminders"} aria-label={`Remind ${s.debtorName}`} disabled={!s.debtorEmail} onClick={() => act(() => api.post(`/splits/${s._id}/remind`))}>
+                                <button
+                                  className="icon-btn"
+                                  title={s.debtorEmail || s.debtorPhone ? `Send ${s.debtorName} a reminder (${[s.debtorEmail, s.debtorPhone && `WhatsApp ${s.debtorPhone}`].filter(Boolean).join(", ")})` : "Add an email or WhatsApp number in the subscription's split to send reminders"}
+                                  aria-label={`Remind ${s.debtorName}`}
+                                  disabled={!s.debtorEmail && !s.debtorPhone}
+                                  onClick={() => act(() => api.post(`/splits/${s._id}/remind`))}
+                                >
                                   <Mail className="size-4" />
                                 </button>
                                 <button className="icon-btn text-green-700 hover:bg-green-50" title="Mark as paid" aria-label={`Mark ${s.debtorName}'s share as paid`} onClick={() => act(() => api.patch(`/splits/${s._id}`, { settled: true }), `${s.debtorName}'s share marked as paid`)}>

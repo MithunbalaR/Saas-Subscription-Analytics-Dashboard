@@ -7,3 +7,4 @@ server/tests
 .git
 .github
 *.md
+server/whatsapp-session

@@ -27,7 +27,7 @@ const toForm = (sub, defaultCurrency) => {
     ...Object.fromEntries(FIELDS.map((k) => [k, sub[k] ?? empty[k]])),
     cost: String(sub.cost),
     nextRenewal: toInputDate(sub.nextRenewal),
-    splitWith: (sub.splitWith || []).map((p) => ({ name: p.name, email: p.email || "", share: String(p.share) })),
+    splitWith: (sub.splitWith || []).map((p) => ({ name: p.name, email: p.email || "", phone: p.phone || "", share: String(p.share) })),
   };
 };
 
@@ -39,7 +39,7 @@ function SplitEditor({ parts, cost, currency, onChange }) {
   const addPerson = () => {
     // Default to an equal split between you and everyone.
     const equal = Math.floor(100 / (parts.length + 2));
-    onChange([...parts.map((p) => ({ ...p, share: String(equal) })), { name: "", email: "", share: String(equal) }]);
+    onChange([...parts.map((p) => ({ ...p, share: String(equal) })), { name: "", email: "", phone: "", share: String(equal) }]);
   };
 
   return (
@@ -48,7 +48,7 @@ function SplitEditor({ parts, cost, currency, onChange }) {
         <div>
           <p className="text-sm font-medium text-stone-700">Split the cost</p>
           <p className="text-xs text-stone-500">
-            Family plan or shared tool? Each payment records who owes you. People with an email get a message with their share.
+            Family plan or shared tool? Each payment records who owes you. People with an email or WhatsApp number get a message with their share.
           </p>
         </div>
         <button type="button" className="btn btn-secondary btn-sm" onClick={addPerson} disabled={parts.length >= 10}>
@@ -58,9 +58,8 @@ function SplitEditor({ parts, cost, currency, onChange }) {
       {parts.length > 0 && (
         <div className="mt-3 space-y-2">
           {parts.map((p, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_5rem_auto] items-center gap-2">
+            <div key={i} className="grid grid-cols-[1fr_5rem_auto] items-center gap-2 rounded-md bg-stone-50 p-2">
               <input className="input" placeholder="Name" aria-label={`Person ${i + 1} name`} value={p.name} required onChange={(e) => setPart(i, "name", e.target.value)} />
-              <input className="input" type="email" placeholder="Email (optional)" aria-label={`Person ${i + 1} email`} value={p.email} onChange={(e) => setPart(i, "email", e.target.value)} />
               <div className="relative">
                 <input className="input pr-6" type="number" min="1" max="99" required aria-label={`Person ${i + 1} share percent`} value={p.share} onChange={(e) => setPart(i, "share", e.target.value)} />
                 <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-stone-400">%</span>
@@ -68,6 +67,10 @@ function SplitEditor({ parts, cost, currency, onChange }) {
               <button type="button" className="icon-btn hover:text-red-700" onClick={() => onChange(parts.filter((_, j) => j !== i))} aria-label={`Remove person ${i + 1}`}>
                 <Trash2 className="size-4" />
               </button>
+              <div className="col-span-3 grid gap-2 sm:grid-cols-2">
+                <input className="input" type="email" placeholder="Email (optional)" aria-label={`Person ${i + 1} email`} value={p.email} onChange={(e) => setPart(i, "email", e.target.value)} />
+                <input className="input" type="tel" placeholder="WhatsApp number (optional)" aria-label={`Person ${i + 1} WhatsApp number`} value={p.phone} onChange={(e) => setPart(i, "phone", e.target.value)} />
+              </div>
             </div>
           ))}
           <p className={`text-xs ${yourShare < 1 ? "font-medium text-red-700" : "text-stone-500"}`}>

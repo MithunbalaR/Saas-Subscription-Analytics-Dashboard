@@ -3,6 +3,7 @@ import Subscription from "../models/Subscription.js";
 import { round2 } from "../utils/billing.js";
 import { formatMoney } from "../utils/currency.js";
 import { sendEmail } from "../utils/email.js";
+import { sendWhatsApp } from "../utils/whatsapp.js";
 import { logActivity } from "../utils/activity.js";
 import { httpError } from "../utils/helpers.js";
 
@@ -29,7 +30,7 @@ export const getSplits = async (req, res) => {
       nextRenewal: s.nextRenewal,
       status: s.status,
       isTrial: s.isTrial,
-      people: s.splitWith.map((p) => ({ name: p.name, email: p.email, share: p.share, amount: round2((s.cost * p.share) / 100) })),
+      people: s.splitWith.map((p) => ({ name: p.name, email: p.email, phone: p.phone, share: p.share, amount: round2((s.cost * p.share) / 100) })),
       yourShare: { share: 100 - othersShare, amount: round2((s.cost * (100 - othersShare)) / 100) },
     };
   });
@@ -38,10 +39,11 @@ export const getSplits = async (req, res) => {
   const balances = new Map();
   for (const s of settlements.filter((s) => !s.settled)) {
     const key = `${s.debtorName.toLowerCase()}|${s.currency}`;
-    const entry = balances.get(key) || { debtorName: s.debtorName, debtorEmail: s.debtorEmail, currency: s.currency, amount: 0, count: 0 };
+    const entry = balances.get(key) || { debtorName: s.debtorName, debtorEmail: s.debtorEmail, debtorPhone: s.debtorPhone, currency: s.currency, amount: 0, count: 0 };
     entry.amount = round2(entry.amount + s.amount);
     entry.count += 1;
     entry.debtorEmail ||= s.debtorEmail;
+    entry.debtorPhone ||= s.debtorPhone;
     balances.set(key, entry);
   }
 
@@ -85,17 +87,21 @@ export const settleAll = async (req, res) => {
   res.json({ settled: result.modifiedCount });
 };
 
-// POST /api/splits/:id/remind - email the person a friendly reminder
+// POST /api/splits/:id/remind - send the person a friendly reminder by email and/or WhatsApp
 export const remind = async (req, res) => {
   const settlement = await findOwned(req.params.id, req.workspace._id);
   if (settlement.settled) throw httpError(400, "This share is already settled");
-  if (!settlement.debtorEmail) throw httpError(400, `No email saved for ${settlement.debtorName}. Edit the subscription's split to add one.`);
-  await sendEmail({
-    to: settlement.debtorEmail,
+  const { debtorEmail: email, debtorPhone: phone } = settlement;
+  if (!email && !phone) {
+    throw httpError(400, `No email or phone number saved for ${settlement.debtorName}. Edit the subscription's split to add one.`);
+  }
+  const message = {
     subject: `Reminder: your share of ${settlement.subscriptionName}`,
     text:
       `Hi ${settlement.debtorName},\n\nFriendly reminder from ${req.user.name}: your ${settlement.share}% share of ${settlement.subscriptionName} ` +
       `(${formatMoney(settlement.amount, settlement.currency)}) is still pending.\n\nSent by SubTrack.`,
-  });
-  res.json({ message: `Reminder sent to ${settlement.debtorEmail}` });
+  };
+  if (email) await sendEmail({ to: email, ...message });
+  if (phone) await sendWhatsApp({ to: phone, ...message });
+  res.json({ message: `Reminder sent to ${[email, phone && `WhatsApp ${phone}`].filter(Boolean).join(" and ")}` });
 };

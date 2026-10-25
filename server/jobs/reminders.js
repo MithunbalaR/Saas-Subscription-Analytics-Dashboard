@@ -2,13 +2,13 @@ import cron from "node-cron";
 import Subscription from "../models/Subscription.js";
 import { DAY_MS, daysBetween, startOfToday } from "../utils/billing.js";
 import { formatMoney } from "../utils/currency.js";
-import { notifyUser } from "../utils/notify.js";
+import { CONTACT_FIELDS, notifyUser } from "../utils/notify.js";
 
 const MAX_REMINDER_DAYS = 30;
 const WORKSPACE_MEMBERS = {
   path: "workspace",
   select: "name members",
-  populate: { path: "members.user", select: "name email emailReminders reminderDays" },
+  populate: { path: "members.user", select: `${CONTACT_FIELDS} reminderDays` },
 };
 
 const describe = (days) =>
@@ -44,7 +44,7 @@ const remindMembers = async (sub, today) => {
         workspace: sub.workspace._id,
         dedupeKey: `renewal:${sub._id}:${dateKey}`,
       },
-      { email: user.emailReminders }
+      { email: user.emailReminders, whatsapp: true }
     );
     if (isNew) created += 1;
   }

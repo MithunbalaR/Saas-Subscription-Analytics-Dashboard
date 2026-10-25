@@ -120,7 +120,10 @@ export default function SubscriptionDetails({ id, workspaceCurrency, onClose, on
                 <li className="flex justify-between px-3 py-2"><span className="font-medium">You</span><span className="tabular-nums">{yourShare}% · {formatMoney((sub.cost * yourShare) / 100, sub.currency)}</span></li>
                 {sub.splitWith.map((p) => (
                   <li key={p.name} className="flex justify-between px-3 py-2">
-                    <span>{p.name}{p.email && <span className="text-stone-500"> · {p.email}</span>}</span>
+                    <span>
+                      {p.name}
+                      {[p.email, p.phone].filter(Boolean).map((contact) => <span key={contact} className="text-stone-500"> · {contact}</span>)}
+                    </span>
                     <span className="tabular-nums">{p.share}% · {formatMoney((sub.cost * p.share) / 100, sub.currency)}</span>
                   </li>
                 ))}

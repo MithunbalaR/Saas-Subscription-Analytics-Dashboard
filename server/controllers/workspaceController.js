@@ -93,7 +93,7 @@ export const addMember = async (req, res) => {
       link: "/team",
       workspace: workspace._id,
     },
-    { email: true }
+    { email: true, whatsapp: true }
   );
   await logActivity(workspace, req.user, { action: "added", entity: "member", entityName: invitee.name });
   res.status(201).json(await toResponse(workspace, req.user._id));

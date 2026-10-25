@@ -5,27 +5,37 @@ import Subscription from "../models/Subscription.js";
 import { buildMonthlyReport, previousMonthKey, renderReportPdf } from "../utils/report.js";
 import { reportEmail } from "../controllers/reportController.js";
 import { sendEmailSafe } from "../utils/email.js";
+import { sendWhatsAppSafe } from "../utils/whatsapp.js";
+import { CONTACT_FIELDS, wantsWhatsApp } from "../utils/notify.js";
 
 // On the 1st of every month: email last month's PDF report to every member (who has email turned on)
-// of every workspace that had any activity.
+// of every workspace that had any activity, and WhatsApp them the summary (the PDF stays email-only).
 export const sendMonthlyReports = async (monthKey = previousMonthKey()) => {
-  const workspaces = await Workspace.find().populate("members.user", "email emailReminders");
+  const workspaces = await Workspace.find().populate("members.user", CONTACT_FIELDS);
   let sent = 0;
+  let whatsapps = 0;
   for (const workspace of workspaces) {
-    const recipients = workspace.members.map((m) => m.user).filter((u) => u?.email && u.emailReminders);
-    if (!recipients.length) continue;
+    const members = workspace.members.map((m) => m.user).filter(Boolean);
+    const byEmail = members.filter((u) => u.email && u.emailReminders);
+    const byWhatsApp = members.filter(wantsWhatsApp);
+    if (!byEmail.length && !byWhatsApp.length) continue;
     const hasData =
       (await Expense.exists({ workspace: workspace._id })) || (await Subscription.exists({ workspace: workspace._id }));
     if (!hasData) continue;
 
     const report = await buildMonthlyReport(workspace, monthKey);
-    const pdf = await renderReportPdf(report);
-    for (const user of recipients) {
-      sendEmailSafe({ to: user.email, ...reportEmail(report, pdf) });
+    const mail = reportEmail(report, byEmail.length ? await renderReportPdf(report) : null);
+    for (const user of byEmail) {
+      sendEmailSafe({ to: user.email, ...mail });
       sent += 1;
     }
+    const summary = mail.text.replace("The full report is attached as a PDF.", "The full PDF report is in your email and in SubTrack.");
+    for (const user of byWhatsApp) {
+      sendWhatsAppSafe({ to: user.phone, subject: mail.subject, text: summary });
+      whatsapps += 1;
+    }
   }
-  return { month: monthKey, emailsSent: sent };
+  return { month: monthKey, emailsSent: sent, whatsappsSent: whatsapps };
 };
 
 export const startMonthlyReportJob = () => {

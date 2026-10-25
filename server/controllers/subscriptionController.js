@@ -5,8 +5,9 @@ import Workspace from "../models/Workspace.js";
 import { addCycle, daysBetween, formatDay, PAY_WINDOW_DAYS, paymentOpensOn, round2, startOfToday, toMonthly } from "../utils/billing.js";
 import { convert, formatMoney, getRates } from "../utils/currency.js";
 import { checkBudgetAlerts } from "../utils/spend.js";
-import { notifyUser } from "../utils/notify.js";
+import { CONTACT_FIELDS, notifyUser, wantsWhatsApp } from "../utils/notify.js";
 import { sendEmailSafe } from "../utils/email.js";
+import { sendWhatsAppSafe } from "../utils/whatsapp.js";
 import { logActivity } from "../utils/activity.js";
 import { remindForSubscription } from "../jobs/reminders.js";
 import { httpError, pick, escapeRegex, getSort } from "../utils/helpers.js";
@@ -29,7 +30,7 @@ const withBase = (sub, base, rates) => ({
   monthlyCostBase: round2(convert(toMonthly(sub.cost, sub.billingCycle), sub.currency, base, rates)),
 });
 
-const loadMembers = (workspaceId) => Workspace.findById(workspaceId).populate("members.user", "name email emailReminders");
+const loadMembers = (workspaceId) => Workspace.findById(workspaceId).populate("members.user", CONTACT_FIELDS);
 
 // GET /api/subscriptions?status=&category=&q=&sort=&order=
 export const getSubscriptions = async (req, res) => {
@@ -73,9 +74,9 @@ export const createSubscription = async (req, res) => {
     entityName: subscription.name,
     details: `${formatMoney(subscription.cost, subscription.currency)} ${subscription.billingCycle}${subscription.isTrial ? " (free trial)" : ""}`,
   });
-  const splitEmailsSent = emailSplitParticipants(subscription, [], req.user, req.workspace);
+  const { emails: splitEmailsSent, whatsapps: splitWhatsAppsSent } = messageSplitParticipants(subscription, [], req.user, req.workspace);
   await confirmNewSubscription(subscription, req.user, req.workspace);
-  res.status(201).json({ ...subscription.toJSON(), splitEmailsSent });
+  res.status(201).json({ ...subscription.toJSON(), splitEmailsSent, splitWhatsAppsSent });
 };
 
 // "You added Netflix" for the person who created the subscription: price, next charge and, for a
@@ -86,6 +87,10 @@ const confirmNewSubscription = async (subscription, creator, workspace) => {
     const money = (amount) => formatMoney(amount, subscription.currency);
     const share = (percent) => money(round2((subscription.cost * percent) / 100));
     const parts = subscription.splitWith;
+    const contacted = (p) => {
+      const ways = [p.email && `emailed at ${p.email}`, p.phone && `WhatsApp ${p.phone}`].filter(Boolean);
+      return ways.length ? ` (${ways.join(", ")})` : "";
+    };
     const title = `You added ${subscription.name}`;
     const when = `${subscription.isTrial ? "Free trial ends" : "Next charge"}: ${formatDay(subscription.nextRenewal)}`;
 
@@ -94,7 +99,7 @@ const confirmNewSubscription = async (subscription, creator, workspace) => {
       const yours = 100 - parts.reduce((sum, p) => sum + p.share, 0);
       text +=
         `\n\nCost split:\nYou: ${yours}% = ${share(yours)} per ${cycle}\n` +
-        parts.map((p) => `${p.name}: ${p.share}% = ${share(p.share)} per ${cycle}${p.email ? ` (emailed at ${p.email})` : ""}`).join("\n");
+        parts.map((p) => `${p.name}: ${p.share}% = ${share(p.share)} per ${cycle}${contacted(p)}`).join("\n");
     }
 
     // The bell item stays short (500-character limit); the email has the full breakdown.
@@ -105,6 +110,7 @@ const confirmNewSubscription = async (subscription, creator, workspace) => {
       { email: false }
     );
     if (creator.emailReminders) sendEmailSafe({ to: creator.email, subject: title, text: `${text}\n\nSent by SubTrack.` });
+    if (wantsWhatsApp(creator)) sendWhatsAppSafe({ to: creator.phone, subject: title, text: `${text}\n\nSent by SubTrack.` });
   } catch (err) {
     console.error("New subscription confirmation failed:", err.message);
   }
@@ -117,11 +123,11 @@ export const updateSubscription = async (req, res) => {
     cost: subscription.cost,
     currency: subscription.currency,
     billingCycle: subscription.billingCycle,
-    splitWith: subscription.splitWith.map((p) => ({ name: p.name, email: p.email, share: p.share })),
+    splitWith: subscription.splitWith.map((p) => ({ name: p.name, email: p.email, phone: p.phone, share: p.share })),
   };
   subscription.set(pick(req.body, FIELDS));
   await subscription.save();
-  const splitEmailsSent = emailSplitParticipants(subscription, before, req.user, req.workspace);
+  const { emails: splitEmailsSent, whatsapps: splitWhatsAppsSent } = messageSplitParticipants(subscription, before, req.user, req.workspace);
 
   if (before.currency === subscription.currency && subscription.cost > before.cost) {
     await announcePriceHike(req.workspace._id, subscription, before.cost);
@@ -136,25 +142,29 @@ export const updateSubscription = async (req, res) => {
         ? `price ${formatMoney(before.cost, before.currency)} → ${formatMoney(subscription.cost, subscription.currency)}`
         : undefined,
   });
-  res.json({ ...subscription.toJSON(), splitEmailsSent });
+  res.json({ ...subscription.toJSON(), splitEmailsSent, splitWhatsAppsSent });
 };
 
-// Emails people in a cost split:
-//  - "You've been added..." to anyone newly added with an email address
+// Messages people in a cost split by email and/or WhatsApp:
+//  - "You've been added..." to anyone newly added (or reachable on a newly saved email/phone)
 //  - "Your share has changed..." to existing people whose amount changed (new share %, price or billing cycle)
 // `before` is the subscription's previous price and split ([] when the subscription is new).
-// Returns how many emails were sent.
-const emailSplitParticipants = (subscription, before, addedBy, workspace) => {
-  const previous = new Map((before.splitWith || []).filter((p) => p.email).map((p) => [p.email, p]));
+// Returns how many emails and WhatsApp messages were sent.
+const splitKey = (p) => p.email || p.phone || p.name.trim().toLowerCase();
+const messageSplitParticipants = (subscription, before, addedBy, workspace) => {
+  const previous = new Map((before.splitWith || []).map((p) => [splitKey(p), p]));
   const cycle = subscription.billingCycle.replace("ly", ""); // month / quarter / year
-  let sent = 0;
+  const sent = { emails: 0, whatsapps: 0 };
 
   for (const person of subscription.splitWith) {
-    if (!person.email) continue;
+    if (!person.email && !person.phone) continue;
     const amount = round2((subscription.cost * person.share) / 100);
-    const old = previous.get(person.email);
+    const old = previous.get(splitKey(person));
     const priceChanged = old && (before.cost !== subscription.cost || before.currency !== subscription.currency || before.billingCycle !== subscription.billingCycle);
-    if (old && old.share === person.share && !priceChanged) continue; // nothing changed for this person
+    const changed = old && (old.share !== person.share || priceChanged);
+    const sendEmail = person.email && (!old || changed || old.email !== person.email);
+    const sendWhatsApp = person.phone && (!old || changed || old.phone !== person.phone);
+    if (!sendEmail && !sendWhatsApp) continue; // nothing new for this person
 
     const details =
       `Subscription: ${subscription.name}\n` +
@@ -163,7 +173,7 @@ const emailSplitParticipants = (subscription, before, addedBy, workspace) => {
       `${subscription.isTrial ? "Free trial ends" : "Next charge"}: ${formatDay(subscription.nextRenewal)}\n` +
       `Pay to: ${addedBy.name} (${addedBy.email})`;
 
-    const mail = old
+    const mail = changed
       ? {
           subject: `Your share of ${subscription.name} has changed: ${formatMoney(amount, subscription.currency)} per ${cycle}`,
           text:
@@ -175,10 +185,16 @@ const emailSplitParticipants = (subscription, before, addedBy, workspace) => {
           subject: `${addedBy.name} added you to the ${subscription.name} cost split: you pay ${formatMoney(amount, subscription.currency)} per ${cycle}`,
           text:
             `Hi ${person.name},\n\n${addedBy.name} added you to a shared subscription in SubTrack (${workspace.name}).\n\n${details}\n\n` +
-            `Each time ${subscription.name} renews, ${addedBy.name} pays the full amount and you'll get an email with your share to settle.\n\nSent by SubTrack.`,
+            `Each time ${subscription.name} renews, ${addedBy.name} pays the full amount and you'll get a message with your share to settle.\n\nSent by SubTrack.`,
         };
-    sendEmailSafe({ to: person.email, ...mail });
-    sent += 1;
+    if (sendEmail) {
+      sendEmailSafe({ to: person.email, ...mail });
+      sent.emails += 1;
+    }
+    if (sendWhatsApp) {
+      sendWhatsAppSafe({ to: person.phone, ...mail });
+      sent.whatsapps += 1;
+    }
   }
   return sent;
 };
@@ -273,6 +289,7 @@ const createSettlements = async (workspace, subscription, expense, payer) => {
       expense: expense._id,
       debtorName: part.name,
       debtorEmail: part.email,
+      debtorPhone: part.phone,
       creditor: payer._id,
       amount: round2((expense.amount * part.share) / 100),
       currency: expense.currency,
@@ -280,14 +297,14 @@ const createSettlements = async (workspace, subscription, expense, payer) => {
     }))
   );
   for (const s of settlements) {
-    if (!s.debtorEmail) continue;
-    sendEmailSafe({
-      to: s.debtorEmail,
+    const message = {
       subject: `Your share of ${subscription.name}: ${formatMoney(s.amount, s.currency)}`,
       text:
         `Hi ${s.debtorName},\n\n${payer.name} just paid ${formatMoney(expense.amount, expense.currency)} for ${subscription.name}.\n` +
         `Your ${s.share}% share is ${formatMoney(s.amount, s.currency)}. Please settle it with ${payer.name}.\n\nSent by SubTrack.`,
-    });
+    };
+    if (s.debtorEmail) sendEmailSafe({ to: s.debtorEmail, ...message });
+    if (s.debtorPhone) sendWhatsAppSafe({ to: s.debtorPhone, ...message });
   }
   return settlements;
 };
@@ -306,7 +323,7 @@ const announcePayment = async (workspaceId, subscription, expense, payer, wasTri
       await notifyUser(
         user,
         { type: "payment", title, message, link: "/expenses", workspace: workspace._id, dedupeKey: `payment:${expense._id}` },
-        { email: user.emailReminders }
+        { email: user.emailReminders, whatsapp: true }
       );
     }
   } catch (err) {
@@ -328,7 +345,7 @@ const announcePriceHike = async (workspaceId, subscription, oldCost) => {
       await notifyUser(
         user,
         { type: "price", title, message, link: "/subscriptions", workspace: workspace._id, dedupeKey: `price:${subscription._id}:${subscription.priceHistory.length}` },
-        { email: user.emailReminders }
+        { email: user.emailReminders, whatsapp: true }
       );
     }
   } catch (err) {

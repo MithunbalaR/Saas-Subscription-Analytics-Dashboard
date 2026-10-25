@@ -12,13 +12,14 @@ process.env.JWT_SECRET = "test-secret";
 process.env.JWT_REFRESH_SECRET = "test-refresh-secret";
 process.env.RATES_OFFLINE = "true";
 
-let mongo, app, outbox, User, Notification;
+let mongo, app, outbox, whatsappOutbox, User, Notification;
 
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
   await mongoose.connect(mongo.getUri("subtrack-test"));
   ({ default: app } = await import("../app.js"));
   ({ outbox } = await import("../utils/email.js"));
+  ({ whatsappOutbox } = await import("../utils/whatsapp.js"));
   ({ default: User } = await import("../models/User.js"));
   ({ default: Notification } = await import("../models/Notification.js"));
   await Notification.syncIndexes();
@@ -559,7 +560,7 @@ describe("Optional integrations report clearly when not configured", () => {
 
   test("config endpoint says what is available", async () => {
     const res = await api().get("/api/auth/config").expect(200);
-    expect(res.body).toEqual({ vapidPublicKey: null, aiEnabled: true, aiProvider: "basic" });
+    expect(res.body).toEqual({ vapidPublicKey: null, aiEnabled: true, aiProvider: "basic", whatsappEnabled: false });
   });
 
   test("without any AI key the assistant still answers from the data (smart answers)", async () => {
@@ -583,5 +584,110 @@ describe("Optional integrations report clearly when not configured", () => {
   test("push returns 503 with a helpful message; Google sign-in no longer exists", async () => {
     expect((await api().post("/api/auth/google").send({ credential: "x" })).status).toBe(404);
     expect((await api().post("/api/push/subscribe").set(auth(token)).send({ endpoint: "https://x", keys: { p256dh: "a", auth: "b" } })).status).toBe(503);
+  });
+});
+
+describe("WhatsApp notifications", () => {
+  const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const whatsappTo = (before, to) => whatsappOutbox.slice(before).filter((m) => m.to === to);
+  let token;
+
+  beforeAll(async () => {
+    const res = await api().post("/api/auth/register").send({ name: "Nila", email: "nila@test.com", password: "secret123", phone: "98765 43210" });
+    expect(res.status).toBe(201);
+    expect(res.body.user.phone).toBe("+919876543210"); // 10-digit numbers default to India (+91)
+    expect(res.body.user.whatsappNotifications).toBe(true);
+    token = res.body.accessToken;
+  });
+
+  test("phone numbers are validated and can be changed or cleared in the profile", async () => {
+    const bad = await api().post("/api/auth/register").send({ name: "X", email: "x-phone@test.com", password: "secret123", phone: "12" });
+    expect(bad.status).toBe(400);
+    expect(bad.body.message).toMatch(/valid phone number/);
+
+    let res = await api().put("/api/auth/profile").set(auth(token)).send({ phone: "+44 7700 900123" }).expect(200);
+    expect(res.body.user.phone).toBe("+447700900123");
+    res = await api().put("/api/auth/profile").set(auth(token)).send({ phone: "" }).expect(200);
+    expect(res.body.user.phone).toBe("");
+    res = await api().put("/api/auth/profile").set(auth(token)).send({ phone: "9876543210" }).expect(200);
+    expect(res.body.user.phone).toBe("+919876543210");
+  });
+
+  test("split participants with a phone get WhatsApp messages, and the creator gets a copy", async () => {
+    const before = whatsappOutbox.length;
+    const created = await api().post("/api/subscriptions").set(auth(token)).send({
+      name: "Hotstar",
+      cost: 900,
+      billingCycle: "quarterly",
+      nextRenewal: inDays(40),
+      splitWith: [{ name: "Ilaya", phone: "9123456780", share: 50 }],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.splitWith[0].phone).toBe("+919123456780");
+    expect(created.body.splitWhatsAppsSent).toBe(1);
+    expect(created.body.splitEmailsSent).toBe(0);
+
+    const [toIlaya] = whatsappTo(before, "+919123456780");
+    expect(toIlaya.body).toMatch(/^\*Nila added you to the Hotstar cost split: you pay ₹450\.00 per quarter\*/);
+    const [copy] = whatsappTo(before, "+919876543210");
+    expect(copy.body).toMatch(/\*You added Hotstar\*/);
+    expect(copy.body).toMatch(/Ilaya: 50% = ₹450\.00 per quarter \(WhatsApp \+919123456780\)/);
+
+    // Editing something unrelated sends nothing; changing the price messages Ilaya again
+    let mark = whatsappOutbox.length;
+    await api().put(`/api/subscriptions/${created.body._id}`).set(auth(token)).send({ notes: "cricket" }).expect(200);
+    expect(whatsappOutbox.length).toBe(mark);
+    const res = await api().put(`/api/subscriptions/${created.body._id}`).set(auth(token)).send({ cost: 1000 }).expect(200);
+    expect(res.body.splitWhatsAppsSent).toBe(1);
+    expect(whatsappTo(mark, "+919123456780")[0].body).toMatch(/Your share of Hotstar has changed: ₹500\.00 per quarter/);
+
+    // Paying creates a balance; the share and the "Remind" button go to WhatsApp
+    await api().put(`/api/subscriptions/${created.body._id}`).set(auth(token)).send({ nextRenewal: inDays(1) }).expect(200);
+    mark = whatsappOutbox.length;
+    await api().post(`/api/subscriptions/${created.body._id}/pay`).set(auth(token)).expect(201);
+    expect(whatsappTo(mark, "+919123456780").some((m) => /Your share of Hotstar: ₹500\.00/.test(m.body))).toBe(true);
+    expect(whatsappTo(mark, "+919876543210").some((m) => /Hotstar renewed/.test(m.body))).toBe(true); // payment confirmation
+
+    const split = (await api().get("/api/splits").set(auth(token))).body.items.find((s) => s.debtorName === "Ilaya");
+    expect(split.debtorPhone).toBe("+919123456780");
+    mark = whatsappOutbox.length;
+    const reminded = await api().post(`/api/splits/${split._id}/remind`).set(auth(token)).expect(200);
+    expect(reminded.body.message).toBe("Reminder sent to WhatsApp +919123456780");
+    expect(whatsappTo(mark, "+919123456780")[0].body).toMatch(/Reminder: your share of Hotstar/);
+  });
+
+  test("renewal reminders go to WhatsApp unless the user turns it off", async () => {
+    let before = whatsappOutbox.length;
+    await api().post("/api/subscriptions").set(auth(token)).send({ name: "Zee5", cost: 99, nextRenewal: inDays(1) }).expect(201);
+    expect(whatsappTo(before, "+919876543210").some((m) => /\*Zee5 renews in 1 day\*/.test(m.body))).toBe(true);
+
+    await api().put("/api/auth/profile").set(auth(token)).send({ whatsappNotifications: false }).expect(200);
+    before = whatsappOutbox.length;
+    await api().post("/api/subscriptions").set(auth(token)).send({ name: "SonyLIV", cost: 299, nextRenewal: inDays(1) }).expect(201);
+    expect(whatsappTo(before, "+919876543210")).toHaveLength(0);
+    // The in-app notification still arrives
+    const notes = (await api().get("/api/notifications").set(auth(token))).body.items;
+    expect(notes.some((n) => n.title === "SonyLIV renews in 1 day")).toBe(true);
+  });
+
+  test("admins can see which WhatsApp provider is used; others can't", async () => {
+    expect((await api().get("/api/admin/whatsapp").set(auth(token))).status).toBe(403);
+    const admin = await registerUser("Wa Admin", "wa-admin@test.com");
+    await User.updateOne({ _id: admin.user._id }, { role: "admin" });
+    const res = await api().get("/api/admin/whatsapp").set(auth(admin.token)).expect(200);
+    expect(res.body).toEqual({ provider: "log", status: "disabled", qr: null, number: null });
+    expect((await api().post("/api/admin/whatsapp/logout").set(auth(admin.token))).status).toBe(400);
+
+    // Test message: validated, and without a provider it lands in the outbox / server log
+    expect((await api().post("/api/admin/whatsapp/test").set(auth(admin.token)).send({ to: "123" })).status).toBe(400);
+    const before = whatsappOutbox.length;
+    const test = await api().post("/api/admin/whatsapp/test").set(auth(admin.token)).send({ to: "98765 00000" }).expect(200);
+    expect(test.body.message).toMatch(/server log/);
+    expect(whatsappOutbox.slice(before)[0]).toMatchObject({ to: "+919876500000" });
+  });
+
+  test("config reports that WhatsApp isn't enabled", async () => {
+    const res = await api().get("/api/auth/config").expect(200);
+    expect(res.body.whatsappEnabled).toBe(false);
   });
 });

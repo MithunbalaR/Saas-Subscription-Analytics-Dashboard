@@ -21,6 +21,9 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ["user", "admin"], default: "user" },
     avatar: { type: String, default: "" },
     emailReminders: { type: Boolean, default: true },
+    // WhatsApp number in E.164 format (+919876543210); alerts are sent there too while whatsappNotifications is on.
+    phone: { type: String, trim: true, default: "", match: [/^(\+[1-9]\d{7,14})?$/, "Enter a valid phone number"] },
+    whatsappNotifications: { type: Boolean, default: true },
     reminderDays: { type: Number, min: 1, max: 30, default: 3 },
     lastLoginAt: Date,
     language: { type: String, enum: ["en", "hi", "ta"], default: "en" },

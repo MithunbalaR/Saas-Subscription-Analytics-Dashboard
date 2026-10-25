@@ -1,6 +1,7 @@
 import { body, param, query } from "express-validator";
 import { BILLING_CYCLES, CATEGORIES, STATUSES } from "../utils/billing.js";
 import { CURRENCIES } from "../utils/currency.js";
+import { isValidPhone, normalizePhone } from "../utils/phone.js";
 
 // ---------- shared ----------
 export const idParam = (name = "id") => param(name).isMongoId().withMessage(`Invalid ${name}`);
@@ -15,11 +16,20 @@ export const paging = [
   query("order").optional().isIn(["asc", "desc"]).withMessage("order must be asc or desc"),
 ];
 
+// Optional WhatsApp number: normalised to E.164 ("98765 43210" -> "+919876543210"), empty clears it.
+const phone = (field = "phone") =>
+  body(field)
+    .optional({ values: "null" })
+    .customSanitizer(normalizePhone)
+    .custom((value) => value === "" || isValidPhone(value))
+    .withMessage("Enter a valid phone number with country code, e.g. +91 98765 43210");
+
 // ---------- auth ----------
 export const registerRules = [
   body("name").trim().notEmpty().withMessage("Name is required").isLength({ max: 60 }).withMessage("Name is too long"),
   email(),
   newPassword(),
+  phone(),
 ];
 
 export const loginRules = [email(), body("password").notEmpty().withMessage("Password is required")];
@@ -40,6 +50,8 @@ export const changePasswordRules = [
 export const profileRules = [
   body("name").optional().trim().notEmpty().withMessage("Name cannot be empty").isLength({ max: 60 }),
   body("emailReminders").optional().isBoolean().withMessage("emailReminders must be true or false").toBoolean(),
+  body("whatsappNotifications").optional().isBoolean().withMessage("whatsappNotifications must be true or false").toBoolean(),
+  phone(),
   body("reminderDays").optional().isInt({ min: 1, max: 30 }).withMessage("Reminder days must be 1-30").toInt(),
   body("language").optional().isIn(["en", "hi", "ta"]).withMessage("Unsupported language"),
 ];
@@ -63,6 +75,7 @@ export const subscriptionRules = (isUpdate = false) => {
     body("splitWith").optional().isArray({ max: 10 }).withMessage("You can split with up to 10 people"),
     body("splitWith.*.name").trim().notEmpty().withMessage("Each person in the split needs a name").isLength({ max: 60 }),
     body("splitWith.*.email").optional({ values: "falsy" }).trim().isEmail().withMessage("Enter a valid email for each person").toLowerCase(),
+    phone("splitWith.*.phone"),
     body("splitWith.*.share").isFloat({ min: 1, max: 99 }).withMessage("Each share must be between 1% and 99%").toFloat(),
   ];
 };

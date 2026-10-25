@@ -7,7 +7,7 @@ import { getErrorMessage } from "../api/client.js";
 
 export default function Register() {
   const { register } = useAuth();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -19,7 +19,7 @@ export default function Register() {
     setSubmitting(true);
     setError("");
     try {
-      await register({ name: form.name, email: form.email, password: form.password });
+      await register({ name: form.name, email: form.email, phone: form.phone, password: form.password });
     } catch (err) {
       setError(getErrorMessage(err));
       setSubmitting(false);
@@ -37,6 +37,11 @@ export default function Register() {
         <div>
           <label htmlFor="email" className="label">Email</label>
           <input id="email" name="email" type="email" autoComplete="email" className="input" required value={form.email} onChange={update} />
+        </div>
+        <div>
+          <label htmlFor="phone" className="label">Phone number (WhatsApp)</label>
+          <input id="phone" name="phone" type="tel" autoComplete="tel" placeholder="+91 98765 43210" className="input" value={form.phone} onChange={update} />
+          <p className="mt-1 text-xs text-stone-500">Optional. Get renewal reminders and split messages on WhatsApp.</p>
         </div>
         <div>
           <label htmlFor="password" className="label">Password</label>

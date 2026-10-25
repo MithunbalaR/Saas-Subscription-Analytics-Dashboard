@@ -10,6 +10,7 @@ import { clearRefreshCookie, issueSession, readRefreshCookie, verifyRefreshToken
 import { completeLogin } from "./twoFactorController.js";
 import { pushConfigured } from "../utils/push.js";
 import { aiProvider } from "./aiController.js";
+import { whatsappConfigured } from "../utils/whatsapp.js";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -17,10 +18,10 @@ const hashOtp = (otp) => crypto.createHash("sha256").update(String(otp)).digest(
 
 // POST /api/auth/register
 export const register = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, phone } = req.body;
   if (await User.exists({ email })) throw httpError(409, "An account with this email already exists");
 
-  const user = await User.create({ name, email, password, lastLoginAt: new Date() });
+  const user = await User.create({ name, email, password, phone: phone || "", lastLoginAt: new Date() });
   await createPersonalWorkspace(user);
   res.status(201).json(issueSession(res, user));
 };
@@ -39,6 +40,7 @@ export const getConfig = (req, res) => {
     vapidPublicKey: pushConfigured() ? process.env.VAPID_PUBLIC_KEY : null,
     aiEnabled: true, // the assistant always works: Claude, Gemini, or built-in smart answers
     aiProvider: aiProvider(),
+    whatsappEnabled: whatsappConfigured(),
   });
 };
 
@@ -76,7 +78,7 @@ export const getMe = async (req, res) => {
 
 // PUT /api/auth/profile
 export const updateProfile = async (req, res) => {
-  req.user.set(pick(req.body, ["name", "emailReminders", "reminderDays", "language"]));
+  req.user.set(pick(req.body, ["name", "emailReminders", "reminderDays", "language", "phone", "whatsappNotifications"]));
   await req.user.save();
   res.json({ user: req.user });
 };

@@ -17,6 +17,7 @@ const splitPartSchema = new mongoose.Schema(
   {
     name: { type: String, required: [true, "Each person needs a name"], trim: true, maxlength: 60 },
     email: { type: String, trim: true, lowercase: true, maxlength: 120 },
+    phone: { type: String, trim: true, match: [/^(\+[1-9]\d{7,14})?$/, "Enter a valid phone number"] }, // WhatsApp, E.164
     share: { type: Number, required: true, min: [1, "Share must be at least 1%"], max: [99, "Share must be under 100%"] },
   },
   { _id: false }

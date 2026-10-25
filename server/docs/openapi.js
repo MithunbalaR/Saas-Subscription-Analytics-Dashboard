@@ -54,7 +54,7 @@ export default {
       Register: {
         type: "object",
         required: ["name", "email", "password"],
-        properties: { name: { type: "string" }, email: { type: "string" }, password: { type: "string", minLength: 6 } },
+        properties: { name: { type: "string" }, email: { type: "string" }, password: { type: "string", minLength: 6 }, phone: { type: "string", description: "Optional WhatsApp number, e.g. +919876543210" } },
       },
       Subscription: {
         type: "object",
@@ -114,7 +114,7 @@ export default {
     "/auth/me": { get: op("Auth", "Current user") },
     "/auth/profile": {
       put: op("Auth", "Update name and reminder preferences", {
-        requestBody: json({ type: "object", properties: { name: { type: "string" }, emailReminders: { type: "boolean" }, reminderDays: { type: "integer" } } }),
+        requestBody: json({ type: "object", properties: { name: { type: "string" }, phone: { type: "string" }, emailReminders: { type: "boolean" }, whatsappNotifications: { type: "boolean" }, reminderDays: { type: "integer" } } }),
       }),
     },
     "/auth/password": {

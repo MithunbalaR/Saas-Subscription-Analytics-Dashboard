@@ -46,6 +46,7 @@ const useSaver = () => {
 function ProfileSection() {
   const { user, updateProfile, uploadAvatar, removeAvatar } = useAuth();
   const [name, setName] = useState(user.name);
+  const [phone, setPhone] = useState(user.phone || "");
   const [busy, save] = useSaver();
   const fileInput = useRef(null);
 
@@ -74,7 +75,7 @@ function ProfileSection() {
           <p className="w-full text-xs text-stone-500">PNG, JPG or WEBP, up to 2 MB.</p>
         </div>
       </div>
-      <form onSubmit={(e) => { e.preventDefault(); save(() => updateProfile({ name }), "Profile saved"); }} className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); save(() => updateProfile({ name, phone }), "Profile saved"); }} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="name" className="label">Name</label>
@@ -83,6 +84,11 @@ function ProfileSection() {
           <div>
             <label htmlFor="email" className="label">Email</label>
             <input id="email" className="input" value={user.email} disabled />
+          </div>
+          <div>
+            <label htmlFor="phone" className="label">Phone number (WhatsApp)</label>
+            <input id="phone" type="tel" autoComplete="tel" placeholder="+91 98765 43210" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <p className="mt-1 text-xs text-stone-500">Include the country code. Leave empty to stop WhatsApp messages.</p>
           </div>
         </div>
         <button type="submit" className="btn btn-primary" disabled={busy}>Save profile</button>
@@ -93,11 +99,16 @@ function ProfileSection() {
 
 function NotificationSection() {
   const { user, updateProfile } = useAuth();
-  const [form, setForm] = useState({ emailReminders: user.emailReminders, reminderDays: user.reminderDays });
+  const { whatsappEnabled } = useConfig();
+  const [form, setForm] = useState({
+    emailReminders: user.emailReminders,
+    whatsappNotifications: user.whatsappNotifications ?? true,
+    reminderDays: user.reminderDays,
+  });
   const [busy, save] = useSaver();
 
   return (
-    <Section title="Reminders" description="Renewal reminders and payment confirmations appear in the bell and, if enabled, by email. Budget alerts are sent at 80% and 100%.">
+    <Section title="Reminders" description="Renewal reminders and payment confirmations appear in the bell and, if enabled, by email and WhatsApp. Budget alerts are sent at 80% and 100%.">
       <form onSubmit={(e) => { e.preventDefault(); save(() => updateProfile(form), "Reminder settings saved"); }} className="space-y-5">
         <Toggle
           label="Email me reminders, renewal confirmations and budget alerts"
@@ -105,6 +116,17 @@ function NotificationSection() {
           checked={form.emailReminders}
           onChange={(v) => setForm({ ...form, emailReminders: v })}
         />
+        <Toggle
+          label="Send the same alerts to WhatsApp"
+          description={user.phone || "Add your phone number in Profile above to receive WhatsApp messages."}
+          checked={form.whatsappNotifications}
+          onChange={(v) => setForm({ ...form, whatsappNotifications: v })}
+        />
+        {user.phone && !whatsappEnabled && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            WhatsApp isn't enabled on the server yet, so messages are only written to the server log.
+          </p>
+        )}
         <div className="max-w-xs">
           <label htmlFor="reminderDays" className="label">Remind me this many days before a renewal</label>
           <input id="reminderDays" type="number" min={1} max={30} className="input" value={form.reminderDays} onChange={(e) => setForm({ ...form, reminderDays: Number(e.target.value) })} />
