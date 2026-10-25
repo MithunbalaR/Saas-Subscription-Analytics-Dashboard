@@ -590,7 +590,7 @@ describe("Optional integrations report clearly when not configured", () => {
 describe("WhatsApp notifications", () => {
   const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
   const whatsappTo = (before, to) => whatsappOutbox.slice(before).filter((m) => m.to === to);
-  let token;
+  let token, nilaId;
 
   beforeAll(async () => {
     const res = await api().post("/api/auth/register").send({ name: "Nila", email: "nila@test.com", password: "secret123", phone: "98765 43210" });
@@ -598,6 +598,7 @@ describe("WhatsApp notifications", () => {
     expect(res.body.user.phone).toBe("+919876543210"); // 10-digit numbers default to India (+91)
     expect(res.body.user.whatsappNotifications).toBe(true);
     token = res.body.accessToken;
+    nilaId = res.body.user._id;
   });
 
   test("phone numbers are validated and can be changed or cleared in the profile", async () => {
@@ -628,8 +629,10 @@ describe("WhatsApp notifications", () => {
     expect(created.body.splitEmailsSent).toBe(0);
 
     const [toIlaya] = whatsappTo(before, "+919123456780");
+    expect(toIlaya.from).toBe(nilaId); // sent from the WhatsApp of the person who added Ilaya
     expect(toIlaya.body).toMatch(/^\*Nila added you to the Hotstar cost split: you pay ₹450\.00 per quarter\*/);
     const [copy] = whatsappTo(before, "+919876543210");
+    expect(copy.from).toBe(nilaId); // your own alerts come from your own WhatsApp
     expect(copy.body).toMatch(/\*You added Hotstar\*/);
     expect(copy.body).toMatch(/Ilaya: 50% = ₹450\.00 per quarter \(WhatsApp \+919123456780\)/);
 
@@ -670,20 +673,17 @@ describe("WhatsApp notifications", () => {
     expect(notes.some((n) => n.title === "SonyLIV renews in 1 day")).toBe(true);
   });
 
-  test("admins can see which WhatsApp provider is used; others can't", async () => {
+  test("each user manages their own WhatsApp link (disabled without WHATSAPP_PROVIDER=web)", async () => {
+    expect((await api().get("/api/auth/whatsapp")).status).toBe(401);
+    const res = await api().get("/api/auth/whatsapp").set(auth(token)).expect(200);
+    expect(res.body).toEqual({ enabled: false, status: "disabled", qr: null, number: null });
+    for (const action of ["link", "logout", "test"]) {
+      const r = await api().post(`/api/auth/whatsapp/${action}`).set(auth(token));
+      expect(r.status).toBe(400);
+      expect(r.body.message).toMatch(/isn't enabled/);
+    }
+    // The old shared admin link is gone
     expect((await api().get("/api/admin/whatsapp").set(auth(token))).status).toBe(403);
-    const admin = await registerUser("Wa Admin", "wa-admin@test.com");
-    await User.updateOne({ _id: admin.user._id }, { role: "admin" });
-    const res = await api().get("/api/admin/whatsapp").set(auth(admin.token)).expect(200);
-    expect(res.body).toEqual({ provider: "log", status: "disabled", qr: null, number: null });
-    expect((await api().post("/api/admin/whatsapp/logout").set(auth(admin.token))).status).toBe(400);
-
-    // Test message: validated, and without a provider it lands in the outbox / server log
-    expect((await api().post("/api/admin/whatsapp/test").set(auth(admin.token)).send({ to: "123" })).status).toBe(400);
-    const before = whatsappOutbox.length;
-    const test = await api().post("/api/admin/whatsapp/test").set(auth(admin.token)).send({ to: "98765 00000" }).expect(200);
-    expect(test.body.message).toMatch(/server log/);
-    expect(whatsappOutbox.slice(before)[0]).toMatchObject({ to: "+919876500000" });
   });
 
   test("config reports that WhatsApp isn't enabled", async () => {

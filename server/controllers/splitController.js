@@ -102,6 +102,10 @@ export const remind = async (req, res) => {
       `(${formatMoney(settlement.amount, settlement.currency)}) is still pending.\n\nSent by SubTrack.`,
   };
   if (email) await sendEmail({ to: email, ...message });
-  if (phone) await sendWhatsApp({ to: phone, ...message });
-  res.json({ message: `Reminder sent to ${[email, phone && `WhatsApp ${phone}`].filter(Boolean).join(" and ")}` });
+  const whatsapp = phone ? await sendWhatsApp({ from: req.user._id, to: phone, ...message }) : null;
+  const whatsappSent = whatsapp && whatsapp.reason !== "not-linked";
+  if (!email && !whatsappSent) {
+    throw httpError(400, `Link your WhatsApp in Settings to send ${settlement.debtorName} a WhatsApp reminder, or add their email.`);
+  }
+  res.json({ message: `Reminder sent to ${[email, whatsappSent && `WhatsApp ${phone}`].filter(Boolean).join(" and ")}` });
 };

@@ -15,6 +15,7 @@ import {
 } from "../controllers/authController.js";
 import { setup as setup2fa, enable as enable2fa, disable as disable2fa, verifyLogin as verify2fa } from "../controllers/twoFactorController.js";
 import { protect } from "../middleware/auth.js";
+import { getMyWhatsApp, linkWhatsApp, testMyWhatsApp, unlinkWhatsApp } from "../controllers/whatsappController.js";
 import { validate } from "../middleware/validate.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { avatarUpload } from "../middleware/upload.js";
@@ -39,5 +40,9 @@ router.delete("/avatar", protect, removeAvatar);
 router.post("/2fa/setup", protect, setup2fa);
 router.post("/2fa/enable", protect, authLimiter, enable2fa);
 router.post("/2fa/disable", protect, authLimiter, disable2fa);
+router.get("/whatsapp", protect, getMyWhatsApp);
+router.post("/whatsapp/link", protect, linkWhatsApp);
+router.post("/whatsapp/logout", protect, unlinkWhatsApp);
+router.post("/whatsapp/test", protect, testMyWhatsApp);
 
 export default router;

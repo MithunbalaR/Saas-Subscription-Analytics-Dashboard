@@ -174,7 +174,7 @@ Each of these switches on automatically when its key is in `server/.env` (restar
 |---|---|---|
 | AI assistant | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → API keys. Uses Claude Opus 5 by default (`AI_MODEL` to change). Each question costs a small amount; limited to 30 questions per user per hour. |
 | Browser push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | `npx web-push generate-vapid-keys` (already generated in this project's `.env`). |
-| WhatsApp | `WHATSAPP_PROVIDER=web` | Restart the server, log in as an admin, open **Admin panel → WhatsApp** and scan the QR code from WhatsApp → *Linked devices*. Recipients don't need to do anything. Unofficial (uses the Baileys library): WhatsApp may ban numbers that send automated messages, so a spare number is safer. The login is stored in `server/whatsapp-session/` (git-ignored). |
+| WhatsApp | `WHATSAPP_PROVIDER=web` | Restart the server. Each user opens **Settings → WhatsApp → Link WhatsApp** and scans the QR code from WhatsApp → *Linked devices*. Their own alerts are then sent from their number to themselves, and messages to people in their cost splits are sent from their number; recipients don't need to do anything. Unofficial (uses the Baileys library): WhatsApp may ban numbers that send automated messages. Logins are stored per user in `server/whatsapp-session/<userId>/` (git-ignored). |
 
 ## Docker
 

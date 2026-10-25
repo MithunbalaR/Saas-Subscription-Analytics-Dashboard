@@ -23,8 +23,8 @@ connectDB()
     server.listen(PORT, () => console.log(`API running on http://localhost:${PORT} (docs: /api/docs)`));
     startReminderJob();
     startMonthlyReportJob();
-    // Personal WhatsApp account linked by QR code (Admin panel -> WhatsApp).
-    if (whatsappProvider() === "web") import("./utils/whatsappWeb.js").then(({ startWhatsAppWeb }) => startWhatsAppWeb());
+    // Users' own WhatsApp accounts, linked by QR code in Settings.
+    if (whatsappProvider() === "web") import("./utils/whatsappWeb.js").then(({ restoreSessions }) => restoreSessions());
   })
   .catch((err) => {
     console.error("Failed to connect to MongoDB:", err.message);

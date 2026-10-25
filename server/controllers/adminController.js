@@ -10,8 +10,7 @@ import { round2, toMonthly } from "../utils/billing.js";
 import { convert, getRates } from "../utils/currency.js";
 import { escapeRegex, getPaging, httpError } from "../utils/helpers.js";
 import { runRenewalReminders } from "../jobs/reminders.js";
-import { sendWhatsApp, whatsappProvider } from "../utils/whatsapp.js";
-import { isValidPhone, normalizePhone } from "../utils/phone.js";
+import { whatsappConfigured } from "../utils/whatsapp.js";
 import { sendMonthlyReports } from "../jobs/monthlyReport.js";
 
 const PLATFORM_CURRENCY = "INR";
@@ -135,6 +134,7 @@ export const deleteUser = async (req, res) => {
     Workspace.updateMany({ "members.user": user._id }, { $pull: { members: { user: user._id } } }),
   ]);
   if (user.avatar) await fs.rm(path.join(AVATAR_DIR, path.basename(user.avatar)), { force: true });
+  if (whatsappConfigured()) await (await import("../utils/whatsappWeb.js")).logoutSession(user._id); // unlink their WhatsApp
   await user.deleteOne();
   res.json({ message: `${user.name} and their data were deleted` });
 };
@@ -147,38 +147,4 @@ export const triggerReminders = async (req, res) => {
 // POST /api/admin/run-monthly-reports - email last month's PDF report to everyone now (handy for demos)
 export const triggerMonthlyReports = async (req, res) => {
   res.json(await sendMonthlyReports());
-};
-
-// GET /api/admin/whatsapp - which WhatsApp provider is used and, for "web", the link status / QR code
-export const getWhatsApp = async (req, res) => {
-  const provider = whatsappProvider();
-  if (provider !== "web") return res.json({ provider, status: "disabled", qr: null, number: null });
-  const { getWhatsAppWebStatus } = await import("../utils/whatsappWeb.js");
-  res.json({ provider, ...getWhatsAppWebStatus() });
-};
-
-// POST /api/admin/whatsapp/test  { to } - send a test message to check that WhatsApp delivery works
-export const testWhatsApp = async (req, res) => {
-  const to = normalizePhone(req.body?.to || "");
-  if (!isValidPhone(to)) throw httpError(400, "Enter a valid phone number with country code, e.g. +91 98765 43210");
-  try {
-    const { delivered } = await sendWhatsApp({
-      to,
-      subject: "SubTrack test message",
-      text: `WhatsApp notifications from SubTrack are working. Sent by ${req.user.name}.\n\nSent by SubTrack.`,
-    });
-    res.json({ message: delivered ? `Test message sent to ${to}` : "No WhatsApp provider is set up; the message was written to the server log." });
-  } catch (err) {
-    throw httpError(400, `WhatsApp message failed: ${err.message}`);
-  }
-};
-
-// POST /api/admin/whatsapp/logout - unlink the WhatsApp account (a new QR code appears)
-export const logoutWhatsApp = async (req, res) => {
-  if (whatsappProvider() !== "web") throw httpError(400, "WhatsApp isn't enabled (set WHATSAPP_PROVIDER=web)");
-  const { logoutWhatsAppWeb } = await import("../utils/whatsappWeb.js");
-  await logoutWhatsAppWeb().catch((err) => {
-    throw httpError(400, err.message);
-  });
-  res.json({ message: "WhatsApp disconnected. Scan the new QR code to link a number again." });
 };

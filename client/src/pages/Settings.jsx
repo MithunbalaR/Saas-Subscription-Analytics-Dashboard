@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { BellRing, Camera, Monitor, Moon, ShieldCheck, Sun, Trash2 } from "lucide-react";
+import { BellRing, Camera, MessageCircle, Monitor, Moon, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import api, { getErrorMessage } from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useConfig } from "../context/ConfigContext.jsx";
@@ -480,6 +480,91 @@ function PushSection() {
   );
 }
 
+// Link your own WhatsApp (like WhatsApp Web) so SubTrack can send your alerts and your split messages from your number.
+function WhatsAppSection() {
+  const { user } = useAuth();
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api.get("/auth/whatsapp").then(({ data }) => setInfo(data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // While linking, refresh often: QR codes expire after about 20 seconds.
+  const waiting = info?.status === "qr" || info?.status === "connecting";
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(load, 3000);
+    return () => clearInterval(timer);
+  }, [waiting, load]);
+
+  const run = async (request, success) => {
+    setBusy(true);
+    try {
+      const { data } = await request();
+      if (success) toast.success(data.message || success);
+      load();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!info) return null;
+  return (
+    <Section title="WhatsApp" description="Link your WhatsApp to send your reminders to yourself and your cost-split messages to friends, from your own number.">
+      {!info.enabled && <p className="text-sm text-stone-500">WhatsApp messaging isn't enabled on this server.</p>}
+
+      {info.enabled && info.status === "connected" && (
+        <div className="space-y-4">
+          <p className="flex items-center gap-2 text-sm">
+            <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Connected</span>
+            <span className="text-stone-600">{info.number}</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(() => api.post("/auth/whatsapp/test"), "Test message sent")}>
+              <MessageCircle className="size-4" /> Send me a test message
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={busy}
+              onClick={() => window.confirm("Disconnect your WhatsApp from SubTrack?") && run(() => api.post("/auth/whatsapp/logout"), "WhatsApp disconnected")}
+            >
+              Disconnect
+            </button>
+          </div>
+          {!user.phone && <p className="text-xs text-amber-700">Add your phone number in Profile to receive your own alerts on WhatsApp.</p>}
+          <p className="text-xs text-stone-500">Keep your phone online. This is an unofficial connection; WhatsApp may restrict numbers that send automated messages.</p>
+        </div>
+      )}
+
+      {info.enabled && info.status === "qr" && info.qr && (
+        <div className="flex flex-wrap items-center gap-5">
+          <img src={info.qr} alt="WhatsApp link QR code" className="size-48 rounded-lg border border-stone-200 bg-white p-2" />
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-stone-600">
+            <li>Open WhatsApp on your phone.</li>
+            <li>Tap <b>⋮ / Settings → Linked devices → Link a device</b>.</li>
+            <li>Point your phone at this QR code. It refreshes automatically.</li>
+          </ol>
+        </div>
+      )}
+
+      {info.enabled && info.status === "connecting" && <p className="text-sm text-stone-500">Connecting to WhatsApp…</p>}
+
+      {info.enabled && (info.status === "stopped" || info.status === "disabled") && (
+        <button className="btn btn-primary" disabled={busy} onClick={() => run(() => api.post("/auth/whatsapp/link"))}>
+          <MessageCircle className="size-4" /> Link WhatsApp
+        </button>
+      )}
+    </Section>
+  );
+}
+
 export default function Settings() {
   const { t } = useI18n();
   return (
@@ -489,6 +574,7 @@ export default function Settings() {
         <ProfileSection />
         <SecuritySection />
         <NotificationSection />
+        <WhatsAppSection />
         <PushSection />
         <LanguageSection />
         <AppearanceSection />

@@ -31,7 +31,7 @@ export const sendMonthlyReports = async (monthKey = previousMonthKey()) => {
     }
     const summary = mail.text.replace("The full report is attached as a PDF.", "The full PDF report is in your email and in SubTrack.");
     for (const user of byWhatsApp) {
-      sendWhatsAppSafe({ to: user.phone, subject: mail.subject, text: summary });
+      sendWhatsAppSafe({ from: user._id, to: user.phone, subject: mail.subject, text: summary });
       whatsapps += 1;
     }
   }

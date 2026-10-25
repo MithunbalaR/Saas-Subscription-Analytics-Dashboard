@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { BellRing, Building2, FileText, Layers, MessageCircle, Search, Trash2, Users, Wallet } from "lucide-react";
+import { BellRing, Building2, FileText, Layers, Search, Trash2, Users, Wallet } from "lucide-react";
 import api, { getErrorMessage } from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Alert, Avatar, PageHeader, Pagination, Skeleton, StatCard, TableSkeleton } from "../components/ui.jsx";
@@ -223,98 +223,7 @@ export default function Admin() {
         </>
       )}
 
-      <WhatsAppCard />
       <UsersTable />
     </>
-  );
-}
-
-// Link status of the WhatsApp account used for notifications; shows the QR code to scan when not linked.
-function WhatsAppCard() {
-  const [info, setInfo] = useState(null);
-
-  const load = useCallback(() => {
-    api.get("/admin/whatsapp").then(({ data }) => setInfo(data)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    load();
-    // While waiting for a scan, refresh often: QR codes expire after about 20 seconds.
-    const timer = setInterval(load, 3000);
-    return () => clearInterval(timer);
-  }, [load]);
-
-  const [testTo, setTestTo] = useState("");
-  const [sending, setSending] = useState(false);
-  const sendTest = async (e) => {
-    e.preventDefault();
-    setSending(true);
-    try {
-      const { data } = await api.post("/admin/whatsapp/test", { to: testTo });
-      toast.success(data.message);
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const disconnect = async () => {
-    if (!window.confirm("Unlink this WhatsApp number from SubTrack? Messages stop until a number is linked again.")) return;
-    try {
-      const { data } = await api.post("/admin/whatsapp/logout");
-      toast.success(data.message);
-      load();
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    }
-  };
-
-  if (!info) return null;
-  return (
-    <section className="card mt-4 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="section-title flex items-center gap-2"><MessageCircle className="size-4 text-green-600" /> WhatsApp</h2>
-          <p className="mt-1 text-sm text-stone-500">
-            {info.provider === "web" && "Sent from your own WhatsApp account, linked like WhatsApp Web."}
-            {info.provider === "log" && "Not enabled: messages are only written to the server log. Set WHATSAPP_PROVIDER=web in server/.env and restart."}
-          </p>
-        </div>
-        {info.status === "connected" && (
-          <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
-            Connected{info.number ? ` as ${info.number}` : ""}
-          </span>
-        )}
-      </div>
-
-      {info.provider === "web" && info.status === "qr" && info.qr && (
-        <div className="mt-4 flex flex-wrap items-center gap-5">
-          <img src={info.qr} alt="WhatsApp link QR code" className="size-48 rounded-lg border border-stone-200 bg-white p-2" />
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-stone-600">
-            <li>Open WhatsApp on the phone whose number should send the messages.</li>
-            <li>Tap <b>⋮ / Settings → Linked devices → Link a device</b>.</li>
-            <li>Point the phone at this QR code. It refreshes automatically.</li>
-          </ol>
-        </div>
-      )}
-      {info.provider === "web" && info.status !== "qr" && info.status !== "connected" && (
-        <p className="mt-4 text-sm text-stone-500">Connecting to WhatsApp…</p>
-      )}
-      {info.status === "connected" && (
-        <form onSubmit={sendTest} className="mt-4 flex flex-wrap items-center gap-2">
-          <input type="tel" className="input max-w-56" placeholder="+91 98765 43210" aria-label="Phone number for a test message" value={testTo} onChange={(e) => setTestTo(e.target.value)} required />
-          <button type="submit" className="btn btn-secondary btn-sm" disabled={sending}>{sending ? "Sending…" : "Send test message"}</button>
-        </form>
-      )}
-      {info.provider === "web" && info.status === "connected" && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-stone-500">
-            Unofficial connection: keep your phone online, and remember WhatsApp may restrict numbers that send automated messages.
-          </p>
-          <button className="btn btn-secondary btn-sm" onClick={disconnect}>Disconnect</button>
-        </div>
-      )}
-    </section>
   );
 }

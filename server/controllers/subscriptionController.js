@@ -110,7 +110,7 @@ const confirmNewSubscription = async (subscription, creator, workspace) => {
       { email: false }
     );
     if (creator.emailReminders) sendEmailSafe({ to: creator.email, subject: title, text: `${text}\n\nSent by SubTrack.` });
-    if (wantsWhatsApp(creator)) sendWhatsAppSafe({ to: creator.phone, subject: title, text: `${text}\n\nSent by SubTrack.` });
+    if (wantsWhatsApp(creator)) sendWhatsAppSafe({ from: creator._id, to: creator.phone, subject: title, text: `${text}\n\nSent by SubTrack.` });
   } catch (err) {
     console.error("New subscription confirmation failed:", err.message);
   }
@@ -192,7 +192,7 @@ const messageSplitParticipants = (subscription, before, addedBy, workspace) => {
       sent.emails += 1;
     }
     if (sendWhatsApp) {
-      sendWhatsAppSafe({ to: person.phone, ...mail });
+      sendWhatsAppSafe({ from: addedBy._id, to: person.phone, ...mail });
       sent.whatsapps += 1;
     }
   }
@@ -304,7 +304,7 @@ const createSettlements = async (workspace, subscription, expense, payer) => {
         `Your ${s.share}% share is ${formatMoney(s.amount, s.currency)}. Please settle it with ${payer.name}.\n\nSent by SubTrack.`,
     };
     if (s.debtorEmail) sendEmailSafe({ to: s.debtorEmail, ...message });
-    if (s.debtorPhone) sendWhatsAppSafe({ to: s.debtorPhone, ...message });
+    if (s.debtorPhone) sendWhatsAppSafe({ from: payer._id, to: s.debtorPhone, ...message });
   }
   return settlements;
 };
