@@ -404,6 +404,16 @@ describe("Trials, price hikes, cost splitting, import, activity and forecast", (
     expect(added.text).toMatch(/Your share: 25% = ₹75\.00 per month/);
     expect(added.text).toMatch(/Pay to: Meera \(meera@test\.com\)/);
 
+    // The creator gets a copy: price, next charge and everyone's share (and a bell notification)
+    const [copy] = mailsTo(before, "meera@test.com");
+    expect(copy.subject).toBe("You added YouTube Family");
+    expect(copy.text).toMatch(/₹300\.00 per month/);
+    expect(copy.text).toMatch(/You: 50% = ₹150\.00 per month/);
+    expect(copy.text).toMatch(/Kavya: 25% = ₹75\.00 per month \(emailed at kavya@test\.com\)/);
+    expect(copy.text).toMatch(/Arjun: 25% = ₹75\.00 per month$/m);
+    const bell = (await api().get("/api/notifications").set(auth(token))).body.items;
+    expect(bell.some((n) => n.type === "split" && n.title === "You added YouTube Family")).toBe(true);
+
     // Adding a second emailed person only emails that person
     before = outbox.length;
     const id = created.body._id;

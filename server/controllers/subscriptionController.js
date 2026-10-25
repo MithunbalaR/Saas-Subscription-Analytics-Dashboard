@@ -74,7 +74,40 @@ export const createSubscription = async (req, res) => {
     details: `${formatMoney(subscription.cost, subscription.currency)} ${subscription.billingCycle}${subscription.isTrial ? " (free trial)" : ""}`,
   });
   const splitEmailsSent = emailSplitParticipants(subscription, [], req.user, req.workspace);
+  await confirmNewSubscription(subscription, req.user, req.workspace);
   res.status(201).json({ ...subscription.toJSON(), splitEmailsSent });
+};
+
+// "You added Netflix" for the person who created the subscription: price, next charge and, for a
+// shared plan, everyone's share (so the creator gets a copy of what the split participants were sent).
+const confirmNewSubscription = async (subscription, creator, workspace) => {
+  try {
+    const cycle = subscription.billingCycle.replace("ly", ""); // month / quarter / year
+    const money = (amount) => formatMoney(amount, subscription.currency);
+    const share = (percent) => money(round2((subscription.cost * percent) / 100));
+    const parts = subscription.splitWith;
+    const title = `You added ${subscription.name}`;
+    const when = `${subscription.isTrial ? "Free trial ends" : "Next charge"}: ${formatDay(subscription.nextRenewal)}`;
+
+    let text = `${money(subscription.cost)} per ${cycle} in ${workspace.name}.\n${when}`;
+    if (parts.length) {
+      const yours = 100 - parts.reduce((sum, p) => sum + p.share, 0);
+      text +=
+        `\n\nCost split:\nYou: ${yours}% = ${share(yours)} per ${cycle}\n` +
+        parts.map((p) => `${p.name}: ${p.share}% = ${share(p.share)} per ${cycle}${p.email ? ` (emailed at ${p.email})` : ""}`).join("\n");
+    }
+
+    // The bell item stays short (500-character limit); the email has the full breakdown.
+    const summary = `${money(subscription.cost)} per ${cycle} · ${when}` + (parts.length ? ` · split with ${parts.map((p) => p.name).join(", ")}` : "");
+    await notifyUser(
+      creator,
+      { type: parts.length ? "split" : "system", title, message: summary.slice(0, 500), link: "/subscriptions", workspace: workspace._id, dedupeKey: `created:${subscription._id}` },
+      { email: false }
+    );
+    if (creator.emailReminders) sendEmailSafe({ to: creator.email, subject: title, text: `${text}\n\nSent by SubTrack.` });
+  } catch (err) {
+    console.error("New subscription confirmation failed:", err.message);
+  }
 };
 
 // PUT /api/subscriptions/:id
