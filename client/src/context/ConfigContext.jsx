@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import api from "../api/client.js";
 
-const ConfigContext = createContext({ googleClientId: null, vapidPublicKey: null, aiEnabled: true, aiProvider: null, loaded: false });
+const ConfigContext = createContext({ vapidPublicKey: null, aiEnabled: true, aiProvider: null, loaded: false });
 
-// Which optional features the server has keys for (Google sign-in, push, AI assistant).
+// Which optional features the server has keys for (push notifications, AI assistant).
 export function ConfigProvider({ children }) {
-  const [config, setConfig] = useState({ googleClientId: null, vapidPublicKey: null, aiEnabled: true, aiProvider: null, loaded: false });
+  const [config, setConfig] = useState({ vapidPublicKey: null, aiEnabled: true, aiProvider: null, loaded: false });
 
   useEffect(() => {
     api

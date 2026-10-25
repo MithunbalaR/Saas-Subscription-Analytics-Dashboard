@@ -24,8 +24,6 @@ const userSchema = new mongoose.Schema(
     reminderDays: { type: Number, min: 1, max: 30, default: 3 },
     lastLoginAt: Date,
     language: { type: String, enum: ["en", "hi", "ta"], default: "en" },
-    // "Sign in with Google" account id (users who signed up with Google get a random password).
-    googleId: { type: String, index: { unique: true, sparse: true } },
     // Two-factor authentication (TOTP, e.g. Google Authenticator).
     twoFactorEnabled: { type: Boolean, default: false },
     twoFactorSecret: { type: String, select: false },
@@ -50,7 +48,7 @@ const userSchema = new mongoose.Schema(
         delete ret.twoFactorSecret;
         delete ret.twoFactorPendingSecret;
         delete ret.recoveryCodes;
-        delete ret.googleId;
+        delete ret.googleId; // left over on accounts created with the removed Google sign-in
         return ret;
       },
     },

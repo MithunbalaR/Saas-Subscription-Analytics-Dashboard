@@ -7,7 +7,6 @@ import { httpError, pick } from "../utils/helpers.js";
 import { createPersonalWorkspace } from "../utils/workspace.js";
 import { sendEmail } from "../utils/email.js";
 import { clearRefreshCookie, issueSession, readRefreshCookie, verifyRefreshToken } from "../utils/tokens.js";
-import { OAuth2Client } from "google-auth-library";
 import { completeLogin } from "./twoFactorController.js";
 import { pushConfigured } from "../utils/push.js";
 import { aiProvider } from "./aiController.js";
@@ -37,45 +36,10 @@ export const login = async (req, res) => {
 // GET /api/auth/config - which optional features the server has keys for
 export const getConfig = (req, res) => {
   res.json({
-    googleClientId: process.env.GOOGLE_CLIENT_ID || null,
     vapidPublicKey: pushConfigured() ? process.env.VAPID_PUBLIC_KEY : null,
     aiEnabled: true, // the assistant always works: Claude, Gemini, or built-in smart answers
     aiProvider: aiProvider(),
   });
-};
-
-// POST /api/auth/google  { credential } - "Sign in with Google"
-// The browser gets an ID token from Google; we verify its signature and audience with Google's library.
-export const googleLogin = async (req, res) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId) throw httpError(503, "Google sign-in is not set up on the server");
-
-  let payload;
-  try {
-    const ticket = await new OAuth2Client(clientId).verifyIdToken({ idToken: req.body.credential, audience: clientId });
-    payload = ticket.getPayload();
-  } catch (err) {
-    console.warn("Google sign-in rejected:", err.message);
-    throw httpError(401, "Google sign-in failed. Please try again.");
-  }
-  if (!payload.email_verified) throw httpError(401, "Your Google email address isn't verified");
-
-  const email = payload.email.toLowerCase();
-  let user = await User.findOne({ $or: [{ googleId: payload.sub }, { email }] }).select("+tokenVersion");
-  if (!user) {
-    user = await User.create({
-      name: payload.name || email.split("@")[0],
-      email,
-      googleId: payload.sub,
-      avatar: payload.picture || "",
-      password: crypto.randomBytes(24).toString("hex"), // never used; they sign in with Google
-    });
-    await createPersonalWorkspace(user);
-  } else if (!user.googleId) {
-    user.googleId = payload.sub; // link Google to an existing account with the same verified email
-    if (!user.avatar && payload.picture) user.avatar = payload.picture;
-  }
-  res.json(await completeLogin(res, user));
 };
 
 // POST /api/auth/refresh - swaps the httpOnly refresh cookie for a new access token.

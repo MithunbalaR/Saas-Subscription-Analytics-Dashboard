@@ -183,10 +183,7 @@ export default {
     "/admin/run-reminders": { post: op("Admin", "Run the renewal reminder job now (admin only)") },
     "/admin/run-monthly-reports": { post: op("Admin", "Email last month's PDF report to everyone now (admin only)") },
 
-    "/auth/config": { get: op("Auth", "Which optional features are enabled (Google sign-in, push, AI)", { security: [] }) },
-    "/auth/google": {
-      post: op("Auth", "Sign in with a Google ID token", { security: [], requestBody: json({ type: "object", properties: { credential: { type: "string" } } }) }),
-    },
+    "/auth/config": { get: op("Auth", "Which optional features are enabled (push notifications, AI)", { security: [] }) },
     "/auth/2fa/setup": { post: op("Two-factor auth", "Start 2FA setup - returns a QR code and secret") },
     "/auth/2fa/enable": {
       post: op("Two-factor auth", "Confirm a code to turn 2FA on - returns recovery codes once", { requestBody: json({ type: "object", properties: { code: { type: "string" } } }) }),

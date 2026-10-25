@@ -43,7 +43,7 @@ export const refreshSession = () => {
   return refreshing;
 };
 
-const NO_RETRY = ["/auth/login", "/auth/register", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password", "/auth/google", "/auth/2fa/verify", "/auth/config"];
+const NO_RETRY = ["/auth/login", "/auth/register", "/auth/refresh", "/auth/forgot-password", "/auth/reset-password", "/auth/2fa/verify", "/auth/config"];
 
 // When the access token expires: refresh it once and replay the original request.
 api.interceptors.response.use(

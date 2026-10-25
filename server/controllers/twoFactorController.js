@@ -24,7 +24,7 @@ const newRecoveryCodes = () =>
     return `${hex.slice(0, 4)}-${hex.slice(4)}`;
   });
 
-// Used by password login and Google login: either log in now, or ask for the 2FA code first.
+// Used by password login: either log in now, or ask for the 2FA code first.
 export const completeLogin = async (res, user) => {
   if (user.twoFactorEnabled) {
     return { twoFactorRequired: true, tempToken: jwt.sign({ id: user._id }, tempSecret(), { expiresIn: TEMP_TOKEN_TTL }) };

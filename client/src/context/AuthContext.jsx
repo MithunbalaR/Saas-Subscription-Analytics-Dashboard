@@ -37,7 +37,6 @@ export function AuthProvider({ children }) {
     return null;
   };
   const login = async (email, password) => finishLogin((await api.post("/auth/login", { email, password })).data);
-  const loginWithGoogle = async (credential) => finishLogin((await api.post("/auth/google", { credential })).data);
   const verifyTwoFactor = async (tempToken, code) => {
     const { data } = await api.post("/auth/2fa/verify", { tempToken, code });
     startSession(data);
@@ -72,7 +71,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, setUser, loading, login, loginWithGoogle, verifyTwoFactor, register, logout, updateProfile, uploadAvatar, removeAvatar, changePassword }}
+      value={{ user, setUser, loading, login, verifyTwoFactor, register, logout, updateProfile, uploadAvatar, removeAvatar, changePassword }}
     >
       {children}
     </AuthContext.Provider>

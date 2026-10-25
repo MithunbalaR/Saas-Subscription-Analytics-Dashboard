@@ -24,18 +24,17 @@ app.set("trust proxy", 1); // behind Render's proxy: use the real client IP for 
 // Interactive API documentation (mounted before helmet so its CSP doesn't block the Swagger UI).
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: "SubTrack API" }));
 
-// Security headers. The CSP allows only our own scripts plus Google sign-in, and images from
-// Google's favicon service (subscription logos) and Google profile pictures.
+// Security headers. The CSP allows only our own scripts, and images from Google's favicon
+// service (subscription logos) and Google-hosted profile pictures of older accounts.
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }, // Google sign-in popup
     contentSecurityPolicy: {
       directives: {
-        "script-src": ["'self'", "https://accounts.google.com/gsi/client"],
-        "frame-src": ["'self'", "https://accounts.google.com/gsi/"],
-        "connect-src": ["'self'", "https://accounts.google.com/gsi/"],
-        "style-src": ["'self'", "'unsafe-inline'", "https://accounts.google.com/gsi/style"],
+        "script-src": ["'self'"],
+        "frame-src": ["'self'"],
+        "connect-src": ["'self'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
         "img-src": ["'self'", "data:", "blob:", "https://www.google.com", "https://*.gstatic.com", "https://*.googleusercontent.com"],
         "worker-src": ["'self'", "blob:"],
       },

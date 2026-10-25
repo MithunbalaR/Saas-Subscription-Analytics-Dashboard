@@ -554,13 +554,12 @@ describe("Optional integrations report clearly when not configured", () => {
   beforeAll(async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.GEMINI_API_KEY;
-    delete process.env.GOOGLE_CLIENT_ID;
     ({ token } = await registerUser("Config", "config@test.com"));
   });
 
   test("config endpoint says what is available", async () => {
     const res = await api().get("/api/auth/config").expect(200);
-    expect(res.body).toEqual({ googleClientId: null, vapidPublicKey: null, aiEnabled: true, aiProvider: "basic" });
+    expect(res.body).toEqual({ vapidPublicKey: null, aiEnabled: true, aiProvider: "basic" });
   });
 
   test("without any AI key the assistant still answers from the data (smart answers)", async () => {
@@ -581,8 +580,8 @@ describe("Optional integrations report clearly when not configured", () => {
     expect((await api().post("/api/ai/chat").set(auth(token)).send({ messages: [] })).status).toBe(400);
   });
 
-  test("Google login and push return 503 with a helpful message", async () => {
-    expect((await api().post("/api/auth/google").send({ credential: "x" })).status).toBe(503);
+  test("push returns 503 with a helpful message; Google sign-in no longer exists", async () => {
+    expect((await api().post("/api/auth/google").send({ credential: "x" })).status).toBe(404);
     expect((await api().post("/api/push/subscribe").set(auth(token)).send({ endpoint: "https://x", keys: { p256dh: "a", auth: "b" } })).status).toBe(503);
   });
 });

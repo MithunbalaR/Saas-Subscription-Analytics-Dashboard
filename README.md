@@ -48,7 +48,6 @@ A full-stack **MERN** application (MongoDB, Express, React, Node.js) for trackin
 | **Activity log** | An audit trail per workspace ("Demo paid DigitalOcean · 2 hours ago"), updated live. | Audit logging |
 | **Monthly PDF report** | A server-generated PDF (PDFKit), emailed automatically on the 1st of each month, or downloaded or emailed on demand. | PDF generation, cron, email attachments |
 | **Bulk import** | Import up to 500 subscriptions from CSV or Excel (.xlsx), with a preview and per-row error reporting. | File parsing, batch validation |
-| **Sign in with Google** | OAuth 2.0 / OpenID Connect. The ID token is verified on the server. | OAuth, identity federation |
 | **Two-factor authentication** | TOTP codes from Google Authenticator and similar apps, set up by QR code, with 8 one-time recovery codes. Secrets are encrypted with AES-256-GCM. | MFA, encryption at rest |
 | **Installable app (PWA) + push** | Install SubTrack like a phone or desktop app. Browser push notifications arrive even when it's closed, and it works offline. | Service workers, Web Push (VAPID) |
 | **Ctrl+K command palette** | Jump to any page, run actions, find a subscription or switch workspace from the keyboard. | UX, keyboard accessibility |
@@ -63,9 +62,9 @@ A full-stack **MERN** application (MongoDB, Express, React, Node.js) for trackin
 - **helmet** security headers and **rate limiting** on login, register and OTP routes.
 - **express-validator** checks every input. Mongoose schema validation acts as a second layer.
 - Every query is scoped to the user's workspace. Receipts are only served to workspace members.
-- **Optional 2FA** (TOTP) with encrypted secrets and one-time recovery codes; **Google sign-in** verified server-side.
+- **Optional 2FA** (TOTP) with encrypted secrets and one-time recovery codes.
 - Socket.io connections require a valid JWT; the AI endpoint is rate-limited per user.
-- A Content-Security-Policy that only allows our own scripts plus Google sign-in.
+- A Content-Security-Policy that only allows our own scripts.
 
 ### Quality
 - **37 automated API tests** (Jest + Supertest + in-memory MongoDB).
@@ -77,7 +76,7 @@ A full-stack **MERN** application (MongoDB, Express, React, Node.js) for trackin
 | Layer | Technology |
 |---|---|
 | Database | MongoDB Atlas, Mongoose |
-| Backend | Node.js, Express 5, Socket.io, jsonwebtoken, bcryptjs, express-validator, helmet, express-rate-limit, multer, nodemailer, node-cron, PDFKit, otplib, web-push, google-auth-library, Anthropic SDK (Claude), swagger-ui-express |
+| Backend | Node.js, Express 5, Socket.io, jsonwebtoken, bcryptjs, express-validator, helmet, express-rate-limit, multer, nodemailer, node-cron, PDFKit, otplib, web-push, Anthropic SDK (Claude), swagger-ui-express |
 | Frontend | React 19 (Vite), React Router, Tailwind CSS 4, Recharts, Axios, Socket.io client, react-hot-toast, jsPDF, PapaParse, read-excel-file, lucide-react, Service Worker (PWA) |
 | Testing & DevOps | Jest, Supertest, mongodb-memory-server, GitHub Actions, Docker |
 
@@ -173,7 +172,6 @@ Each of these switches on automatically when its key is in `server/.env` (restar
 | Feature | Setting | How to get it |
 |---|---|---|
 | AI assistant | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → API keys. Uses Claude Opus 5 by default (`AI_MODEL` to change). Each question costs a small amount; limited to 30 questions per user per hour. |
-| Sign in with Google | `GOOGLE_CLIENT_ID` | Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID (Web application). Add `http://localhost:5173` (and your deployed URL) under *Authorised JavaScript origins*. |
 | Browser push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | `npx web-push generate-vapid-keys` (already generated in this project's `.env`). |
 
 ## Docker
@@ -196,7 +194,7 @@ The Express server also serves the built React app, so the whole project is **on
 1. Push the project to GitHub. `.env` is git-ignored.
 2. In MongoDB Atlas → Network Access, allow `0.0.0.0/0`, because Render's IP addresses change.
 3. In Render, choose **New → Blueprint** and pick the repository. `render.yaml` configures everything and generates the JWT secrets.
-4. When asked, paste `MONGO_URI` and, optionally, the SMTP, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID` and `VAPID_*` settings.
+4. When asked, paste `MONGO_URI` and, optionally, the SMTP, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` and `VAPID_*` settings.
 5. After the first deploy, open the Render shell and run `npm run seed --prefix server` if you want demo data.
 
 Things to know about the free plan:
@@ -234,7 +232,6 @@ All routes except register, login, refresh and password reset need `Authorizatio
 | POST | `/api/admin/run-reminders` | Run the reminder job now (admin only) |
 | POST | `/api/admin/run-monthly-reports` | Email last month's PDF report to everyone now (admin only) |
 | GET | `/api/auth/config` | Which optional features are enabled |
-| POST | `/api/auth/google` | Sign in with a Google ID token |
 | POST | `/api/auth/2fa/setup`, `/enable`, `/disable`, `/verify` | Two-factor authentication |
 | POST | `/api/subscriptions/import` | Bulk import (up to 500 rows) |
 | GET / PATCH / POST | `/api/splits`, `/api/splits/:id`, `/settle-all`, `/:id/remind` | Cost-splitting balances |

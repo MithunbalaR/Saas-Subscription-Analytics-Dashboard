@@ -2,12 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import AuthShell from "./AuthShell.jsx";
 import { Alert } from "../components/ui.jsx";
-import GoogleButton from "../components/GoogleButton.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { getErrorMessage } from "../api/client.js";
 
 export default function Register() {
-  const { register, loginWithGoogle } = useAuth();
+  const { register } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -52,18 +51,6 @@ export default function Register() {
           {submitting ? "Creating account…" : "Create account"}
         </button>
       </form>
-      <GoogleButton
-        text="signup_with"
-        onCredential={async (credential) => {
-          setError("");
-          try {
-            const pending = await loginWithGoogle(credential);
-            if (pending?.twoFactorRequired) setError("This account uses two-factor authentication. Please sign in from the login page.");
-          } catch (err) {
-            setError(getErrorMessage(err));
-          }
-        }}
-      />
       <p className="mt-6 text-center text-sm text-stone-500">
         Already have an account?{" "}
         <Link to="/login" className="font-medium text-blue-700 hover:underline">Log in</Link>

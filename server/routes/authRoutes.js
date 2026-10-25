@@ -12,7 +12,6 @@ import {
   forgotPassword,
   resetPassword,
   getConfig,
-  googleLogin,
 } from "../controllers/authController.js";
 import { setup as setup2fa, enable as enable2fa, disable as disable2fa, verifyLogin as verify2fa } from "../controllers/twoFactorController.js";
 import { protect } from "../middleware/auth.js";
@@ -26,7 +25,6 @@ const router = Router();
 router.post("/register", authLimiter, validate(registerRules), register);
 router.post("/login", authLimiter, validate(loginRules), login);
 router.get("/config", getConfig);
-router.post("/google", authLimiter, googleLogin);
 router.post("/2fa/verify", authLimiter, verify2fa);
 router.post("/refresh", refresh);
 router.post("/logout", logout);

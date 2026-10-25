@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import AuthShell from "./AuthShell.jsx";
 import { Alert } from "../components/ui.jsx";
-import GoogleButton from "../components/GoogleButton.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { getErrorMessage } from "../api/client.js";
 
@@ -76,7 +75,7 @@ function TwoFactorStep({ tempToken, onBack }) {
 }
 
 export default function Login() {
-  const { login, loginWithGoogle } = useAuth();
+  const { login } = useAuth();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -125,7 +124,6 @@ export default function Login() {
           {submitting ? "Logging in…" : "Log in"}
         </button>
       </form>
-      <GoogleButton onCredential={(credential) => run(() => loginWithGoogle(credential))} />
       <p className="mt-6 text-center text-sm text-stone-500">
         New here?{" "}
         <Link to="/register" className="font-medium text-blue-700 hover:underline">Create an account</Link>
