@@ -24,7 +24,7 @@ import { useI18n } from "../i18n/I18nContext.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 import CommandPalette from "./CommandPalette.jsx";
 import AiAssistant from "./AiAssistant.jsx";
-import { Avatar, Brand, Spinner } from "./ui.jsx";
+import { Brand, Spinner } from "./ui.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 
 const NAV_ITEMS = [
@@ -142,12 +142,9 @@ export default function Layout() {
         </nav>
 
         <div className="border-t border-stone-200 p-4">
-          <div className="mb-3 flex items-center gap-3">
-            <Avatar user={user} />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{user.name}</p>
-              <p className="truncate text-xs text-stone-500">{user.email}</p>
-            </div>
+          <div className="mb-3 min-w-0">
+            <p className="truncate text-sm font-medium">{user.name}</p>
+            <p className="truncate text-xs text-stone-500">{user.email}</p>
           </div>
           <button onClick={logout} className="btn btn-secondary w-full">
             <LogOut className="size-4" />
