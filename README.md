@@ -166,6 +166,11 @@ Without SMTP settings, emails (reset codes, reminders, alerts) are **printed in 
    - `SMTP_USER=you@gmail.com`
    - `SMTP_PASS=<the 16-character app password>`
 
+**On Render's free plan, SMTP is blocked** (outgoing ports 25, 465 and 587), so Gmail SMTP times out there. Use Brevo's HTTP email API instead (free, 300 emails/day, no domain needed):
+1. Create a free account at https://www.brevo.com and verify your sender address under **Senders, Domains & Dedicated IPs → Senders**.
+2. Create an API key under **SMTP & API → API Keys**.
+3. Set `BREVO_API_KEY` (and `EMAIL_FROM="SubTrack <your verified address>"`). When `BREVO_API_KEY` is set it is used instead of SMTP.
+
 ## Optional integrations
 
 Each of these switches on automatically when its key is in `server/.env` (restart the server afterwards). Without a key, the feature shows a clear "not set up" message.

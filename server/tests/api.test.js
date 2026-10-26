@@ -601,6 +601,34 @@ describe("Optional integrations report clearly when not configured", () => {
     expect((await api().post("/api/ai/chat").set(auth(token)).send({ messages: [] })).status).toBe(400);
   });
 
+  test("emails go through Brevo's HTTP API when BREVO_API_KEY is set", async () => {
+    const { sendEmail } = await import("../utils/email.js");
+    const realFetch = global.fetch;
+    const calls = [];
+    global.fetch = async (url, options) => {
+      calls.push({ url, options });
+      return { ok: true, json: async () => ({ messageId: "abc" }) };
+    };
+    process.env.BREVO_API_KEY = "test-brevo-key";
+    process.env.EMAIL_FROM = "SubTrack <alerts@example.com>";
+    try {
+      const result = await sendEmail({ to: "friend@test.com", subject: "Hello", text: "Line 1\nLine 2", attachments: [{ filename: "r.pdf", content: Buffer.from("PDF") }] });
+      expect(result).toEqual({ delivered: true });
+      expect(calls[0].url).toBe("https://api.brevo.com/v3/smtp/email");
+      expect(calls[0].options.headers["api-key"]).toBe("test-brevo-key");
+      const body = JSON.parse(calls[0].options.body);
+      expect(body.sender).toEqual({ name: "SubTrack", email: "alerts@example.com" });
+      expect(body.to).toEqual([{ email: "friend@test.com" }]);
+      expect(body.textContent).toBe("Line 1\nLine 2");
+      expect(body.htmlContent).toMatch(/Line 1<br>Line 2/);
+      expect(body.attachment).toEqual([{ name: "r.pdf", content: Buffer.from("PDF").toString("base64") }]);
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.BREVO_API_KEY;
+      delete process.env.EMAIL_FROM;
+    }
+  });
+
   test("push returns 503 with a helpful message; Google sign-in no longer exists", async () => {
     expect((await api().post("/api/auth/google").send({ credential: "x" })).status).toBe(404);
     expect((await api().post("/api/push/subscribe").set(auth(token)).send({ endpoint: "https://x", keys: { p256dh: "a", auth: "b" } })).status).toBe(503);

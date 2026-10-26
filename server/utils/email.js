@@ -25,10 +25,42 @@ const layout = (title, body) => `
   </div>`;
 
 // Sends an email via SMTP, or prints it to the server console when SMTP isn't configured.
+const fromAddress = () => process.env.EMAIL_FROM || `SubTrack <${process.env.SMTP_USER}>`;
+
+// Brevo's HTTP email API (https://developers.brevo.com/reference/sendtransacemail). Used when BREVO_API_KEY is set:
+// it works over HTTPS, so it also works on hosts that block SMTP ports (e.g. Render's free plan).
+const sendWithBrevo = async (mail) => {
+  const [, name, email] = fromAddress().match(/^\s*(.*?)\s*<([^>]+)>\s*$/) || [null, "SubTrack", fromAddress()];
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": process.env.BREVO_API_KEY, "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      sender: { name: name || "SubTrack", email },
+      to: [{ email: mail.to }],
+      subject: mail.subject,
+      textContent: mail.text,
+      htmlContent: mail.html,
+      ...(mail.attachments?.length && {
+        attachment: mail.attachments.map((a) => ({ name: a.filename, content: Buffer.from(a.content).toString("base64") })),
+      }),
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(`Brevo ${res.status}: ${data.message || res.statusText}`);
+  }
+};
+
 export const sendEmail = async ({ to, subject, text, html, attachments }) => {
   const mail = { to, subject, text, html: html || layout(subject, text.replace(/\n/g, "<br>")), attachments };
-  const smtp = getTransporter();
 
+  if (process.env.BREVO_API_KEY) {
+    await sendWithBrevo(mail);
+    return { delivered: true };
+  }
+
+  const smtp = getTransporter();
   if (!smtp) {
     outbox.push(mail);
     if (outbox.length > 50) outbox.shift();
@@ -39,7 +71,7 @@ export const sendEmail = async ({ to, subject, text, html, attachments }) => {
     return { delivered: false };
   }
 
-  await smtp.sendMail({ from: process.env.EMAIL_FROM || `SubTrack <${process.env.SMTP_USER}>`, ...mail });
+  await smtp.sendMail({ from: fromAddress(), ...mail });
   return { delivered: true };
 };
 
