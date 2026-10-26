@@ -601,15 +601,18 @@ describe("Optional integrations report clearly when not configured", () => {
     expect((await api().post("/api/ai/chat").set(auth(token)).send({ messages: [] })).status).toBe(400);
   });
 
-  test("the AI assistant skips a Gemini model that stalls, and never hangs", async () => {
+  test("the AI assistant races several Gemini models, uses the first to answer, and never hangs", async () => {
     const realFetch = global.fetch;
     const enc = new TextEncoder();
-    const stall = (opts) => new Promise((_, reject) => opts.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    let cancelled = 0;
+    const stall = (opts) =>
+      new Promise((_, reject) => opts.signal.addEventListener("abort", () => (cancelled++, reject(new DOMException("aborted", "AbortError")))));
     const answer = (text) => ({
       ok: true,
       body: new ReadableStream({
         start(c) {
-          c.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] })}\n`));
+          c.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] })}
+`));
           c.close();
         },
       }),
@@ -620,17 +623,18 @@ describe("Optional integrations report clearly when not configured", () => {
         res.on("data", (c) => (text += c));
         res.on("end", () => cb(null, text));
       });
-    Object.assign(process.env, { GEMINI_API_KEY: "test", GEMINI_MODEL: "stalling-model", AI_FIRST_TEXT_MS: "300" });
+    Object.assign(process.env, { GEMINI_API_KEY: "test", AI_FIRST_TEXT_MS: "500" });
     try {
-      // First model stalls -> the backup model answers
-      global.fetch = async (url, opts) => (String(url).includes("stalling-model") ? stall(opts) : answer("Hello from the backup model"));
+      // Two models stall, one answers -> its answer is used and the stalled requests are cancelled
+      global.fetch = async (url, opts) => (String(url).includes("gemini-3.1-flash-lite:") ? answer("Hello from the fastest model") : stall(opts));
       let started = Date.now();
       let res = await ask();
-      expect(res.body).toMatch(/Hello from the backup model/);
-      expect(res.body).toMatch(/"model":"gemini-flash-latest"/);
+      expect(res.body).toMatch(/Hello from the fastest model/);
+      expect(res.body).toMatch(/"model":"gemini-3.1-flash-lite"/);
+      expect(cancelled).toBe(2);
       expect(Date.now() - started).toBeLessThan(5000);
 
-      // Every model stalls -> instant answer from the built-in smart answers instead of waiting forever
+      // Every model stalls -> an instant answer from the built-in smart answers instead of waiting forever
       global.fetch = async (url, opts) => (String(url).includes("generativelanguage") ? stall(opts) : realFetch(url, opts));
       started = Date.now();
       res = await ask();
@@ -638,9 +642,15 @@ describe("Optional integrations report clearly when not configured", () => {
       expect(res.body).toMatch(/"provider":"basic"/);
       expect(res.body).toMatch(/event: done/);
       expect(Date.now() - started).toBeLessThan(5000);
+
+      // The model is given precomputed totals instead of having to add them up
+      let sentPrompt = "";
+      global.fetch = async (url, opts) => ((sentPrompt = opts.body), answer("ok"));
+      await ask();
+      expect(JSON.parse(sentPrompt).systemInstruction.parts[1].text).toMatch(/"totals":\{"currency":"INR","activeSubscriptions":1,/);
     } finally {
       global.fetch = realFetch;
-      for (const key of ["GEMINI_API_KEY", "GEMINI_MODEL", "AI_FIRST_TEXT_MS"]) delete process.env[key];
+      for (const key of ["GEMINI_API_KEY", "AI_FIRST_TEXT_MS"]) delete process.env[key];
     }
   });
 
