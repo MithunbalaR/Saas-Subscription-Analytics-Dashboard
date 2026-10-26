@@ -191,10 +191,30 @@ describe("Subscriptions, expenses and analytics", () => {
     const good = await api().post(`/api/expenses/${id}/receipt`).set(auth(token)).attach("receipt", Buffer.from("%PDF-1.4 test"), { filename: "invoice.pdf", contentType: "application/pdf" });
     expect(good.status).toBe(200);
     expect(good.body.receipt.originalName).toBe("invoice.pdf");
-    const file = await api().get(`/api/expenses/${id}/receipt`).set(auth(token));
+    const file = await api().get(`/api/expenses/${id}/receipt`).set(auth(token)).buffer(true).parse((res, cb) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => cb(null, Buffer.concat(chunks)));
+    });
     expect(file.status).toBe(200);
     expect(file.headers["content-type"]).toMatch(/pdf/);
+    expect(file.body.toString()).toBe("%PDF-1.4 test"); // stored in MongoDB, not on disk
+    const { default: StoredFile } = await import("../models/StoredFile.js");
+    expect(await StoredFile.countDocuments({ _id: good.body.receipt.filename })).toBe(1);
     await api().delete(`/api/expenses/${id}`).set(auth(token)).expect(200);
+    expect(await StoredFile.countDocuments({ _id: good.body.receipt.filename })).toBe(0);
+  });
+
+  test("profile pictures are stored in MongoDB and served publicly", async () => {
+    const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const up = await api().post("/api/auth/avatar").set(auth(token)).attach("avatar", png, { filename: "me.png", contentType: "image/png" }).expect(200);
+    expect(up.body.user.avatar).toMatch(/^\/uploads\/avatars\/[a-f0-9]{24}$/);
+    const img = await api().get(up.body.user.avatar).expect(200);
+    expect(img.headers["content-type"]).toMatch(/png/);
+    expect(img.headers["cache-control"]).toMatch(/max-age/);
+    await api().delete("/api/auth/avatar").set(auth(token)).expect(200);
+    expect((await api().get(up.body.user.avatar)).status).toBe(404);
+    expect((await api().get("/uploads/avatars/not-an-id")).status).toBe(404);
   });
 
   test("analytics summary includes trend, categories, insights and budgets", async () => {
@@ -684,6 +704,50 @@ describe("WhatsApp notifications", () => {
     }
     // The old shared admin link is gone
     expect((await api().get("/api/admin/whatsapp").set(auth(token))).status).toBe(403);
+  });
+
+  test("WhatsApp logins are stored in MongoDB, survive restarts and can be imported from the old folder format", async () => {
+    const { useMongoAuthState, linkedUserIds, clearAuthState, importFolderSessions } = await import("../utils/whatsappAuthStore.js");
+    const userId = new mongoose.Types.ObjectId();
+
+    // A login whose QR code was never scanned isn't restored (and is cleaned up)
+    let { state, saveCreds } = await useMongoAuthState(userId);
+    expect(state.creds.me).toBeUndefined();
+    await saveCreds();
+    expect(await linkedUserIds()).not.toContain(String(userId));
+
+    // After a successful scan (creds.me is set) everything reloads, including binary keys
+    ({ state, saveCreds } = await useMongoAuthState(userId));
+    state.creds.me = { id: "919800000000:1@s.whatsapp.net" };
+    await saveCreds();
+    await state.keys.set({ "pre-key": { 1: { public: Buffer.from([1, 2, 3]), private: Buffer.from([4, 5, 6]) } } });
+    const reloaded = (await useMongoAuthState(userId)).state;
+    expect(reloaded.creds.me.id).toBe("919800000000:1@s.whatsapp.net");
+    expect(reloaded.creds.noiseKey.private).toBeInstanceOf(Uint8Array);
+    const keys = await reloaded.keys.get("pre-key", ["1", "2"]);
+    expect([...keys["1"].public]).toEqual([1, 2, 3]);
+    expect(keys["2"]).toBeNull();
+    await reloaded.keys.set({ "pre-key": { 1: null } });
+    expect((await reloaded.keys.get("pre-key", ["1"]))["1"]).toBeNull();
+    expect(await linkedUserIds()).toContain(String(userId));
+    await clearAuthState(userId);
+    expect(await linkedUserIds()).not.toContain(String(userId));
+
+    // One-time import of a login saved as files by the earlier version
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "wa-"));
+    const legacyUser = String(new mongoose.Types.ObjectId());
+    await fs.mkdir(path.join(dir, legacyUser));
+    await fs.writeFile(path.join(dir, legacyUser, "creds.json"), JSON.stringify({ me: { id: "919811111111:2@s.whatsapp.net" } }));
+    await fs.writeFile(path.join(dir, legacyUser, "pre-key-7.json"), JSON.stringify({ keyId: 7 }));
+    await importFolderSessions(dir);
+    expect(await linkedUserIds()).toContain(legacyUser);
+    expect((await useMongoAuthState(legacyUser)).state.creds.me.id).toBe("919811111111:2@s.whatsapp.net");
+    await expect(fs.access(path.join(dir, legacyUser))).rejects.toThrow(); // folder removed after the import
+    await clearAuthState(legacyUser);
+    await fs.rm(dir, { recursive: true, force: true });
   });
 
   test("config reports that WhatsApp isn't enabled", async () => {

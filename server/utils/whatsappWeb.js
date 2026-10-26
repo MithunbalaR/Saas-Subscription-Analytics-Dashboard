@@ -1,17 +1,17 @@
 // Each user can link their own WhatsApp account to SubTrack (like WhatsApp Web) by scanning a QR code in
 // Settings; messages they trigger are then sent from their number. Uses the Baileys library and is enabled
-// with WHATSAPP_PROVIDER=web.
+// with WHATSAPP_PROVIDER=web. Logins are stored in MongoDB (whatsappAuthStore.js), so links survive restarts.
 //
 // Recipients don't need to join anything, but this is NOT an official WhatsApp API: WhatsApp's terms
 // don't allow automated messages from personal accounts and can ban the number. To keep the risk low,
 // each account sends one message at a time with a short pause, and only to numbers that are on WhatsApp.
-import fs from "node:fs/promises";
 import path from "node:path";
 import QRCode from "qrcode";
-import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason } from "@whiskeysockets/baileys";
 import { SERVER_ROOT } from "../config/paths.js";
+import { clearAuthState, importFolderSessions, linkedUserIds, useMongoAuthState } from "./whatsappAuthStore.js";
 
-const SESSIONS_DIR = process.env.WHATSAPP_SESSION_DIR || path.join(SERVER_ROOT, "whatsapp-session");
+const LEGACY_SESSIONS_DIR = process.env.WHATSAPP_SESSION_DIR || path.join(SERVER_ROOT, "whatsapp-session");
 const RECONNECT_MS = 5000;
 
 // Baileys logs a lot of protocol detail; keep the server terminal readable.
@@ -20,7 +20,6 @@ const silentLogger = { level: "silent", child: () => silentLogger, trace() {}, d
 // userId -> { sock, status: stopped | connecting | qr | connected, qr, queue }
 const sessions = new Map();
 
-const dirFor = (userId) => path.join(SESSIONS_DIR, String(userId));
 const phoneOf = (jid = "") => `+${jid.split(/[:@]/)[0]}`;
 const sessionOf = (userId) => {
   const id = String(userId);
@@ -47,7 +46,7 @@ export const startSession = async (userId) => {
   session.starting = true;
   session.status = "connecting";
   try {
-    const { state, saveCreds } = await useMultiFileAuthState(dirFor(userId));
+    const { state, saveCreds } = await useMongoAuthState(userId);
     const socket = makeWASocket({
       auth: state,
       logger: silentLogger,
@@ -56,7 +55,7 @@ export const startSession = async (userId) => {
       syncFullHistory: false,
     });
     session.sock = socket;
-    socket.ev.on("creds.update", saveCreds);
+    socket.ev.on("creds.update", () => saveCreds().catch((err) => console.error("[whatsapp] Saving login failed:", err.message)));
     socket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
         session.status = "qr";
@@ -72,15 +71,22 @@ export const startSession = async (userId) => {
         const code = lastDisconnect?.error?.output?.statusCode;
         if (code === DisconnectReason.loggedOut) {
           // Unlinked from the phone or from Settings: forget the login.
-          await fs.rm(dirFor(userId), { recursive: true, force: true });
+          await clearAuthState(userId);
           session.status = "stopped";
           session.qr = null;
           return;
         }
         if (code === DisconnectReason.restartRequired) return startSession(userId); // normal right after scanning
+        if (code === DisconnectReason.connectionReplaced) {
+          // Another SubTrack server (e.g. the deployed one, while this is a local copy) opened the same link.
+          // Let it keep the connection instead of taking it back every few seconds.
+          console.log(`[whatsapp] User ${userId}: connection taken over by another SubTrack server; stopping here.`);
+          session.status = "stopped";
+          return;
+        }
         if (!state.creds.me) {
           // Nobody scanned the QR code in time (a finished link always has creds.me); the user can click "Link WhatsApp" again.
-          await fs.rm(dirFor(userId), { recursive: true, force: true });
+          await clearAuthState(userId);
           session.status = "stopped";
           session.qr = null;
           return;
@@ -102,22 +108,14 @@ export const startSession = async (userId) => {
 export const logoutSession = async (userId) => {
   const session = sessions.get(String(userId));
   if (session?.sock) await session.sock.logout().catch(() => session.sock?.end());
-  await fs.rm(dirFor(userId), { recursive: true, force: true });
+  await clearAuthState(userId);
   sessions.delete(String(userId));
 };
 
 // On server start: reconnect every user who linked WhatsApp before.
 export const restoreSessions = async () => {
-  const entries = await fs.readdir(SESSIONS_DIR, { withFileTypes: true }).catch(() => []);
-  const linked = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    // Only accounts that finished linking: a successful QR scan stores the account in creds.me
-    // (a QR code that was never scanned leaves a login without it, which is cleaned up).
-    const creds = await fs.readFile(path.join(SESSIONS_DIR, entry.name, "creds.json"), "utf8").then(JSON.parse, () => undefined);
-    if (creds?.me?.id) linked.push(entry.name);
-    else if (creds) await fs.rm(path.join(SESSIONS_DIR, entry.name), { recursive: true, force: true });
-  }
+  await importFolderSessions(LEGACY_SESSIONS_DIR).catch((err) => console.error("[whatsapp] Importing saved logins failed:", err.message));
+  const linked = await linkedUserIds();
   for (const userId of linked) startSession(userId);
   if (linked.length) console.log(`[whatsapp] Reconnecting ${linked.length} linked account(s)`);
 };

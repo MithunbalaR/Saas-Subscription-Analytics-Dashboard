@@ -1,8 +1,6 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import Expense from "../models/Expense.js";
 import Subscription from "../models/Subscription.js";
-import { RECEIPT_DIR } from "../config/paths.js";
+import { deleteStoredFile, saveUpload, sendStoredFile } from "../utils/files.js";
 import { round2 } from "../utils/billing.js";
 import { convert, formatMoney, getRates } from "../utils/currency.js";
 import { checkBudgetAlerts } from "../utils/spend.js";
@@ -18,8 +16,8 @@ const findOwned = async (id, workspaceId) => {
   return expense;
 };
 
-const removeReceiptFile = (expense) =>
-  expense.receipt?.filename ? fs.rm(path.join(RECEIPT_DIR, expense.receipt.filename), { force: true }) : null;
+// receipt.filename holds the id of the StoredFile document with the file's contents.
+const removeReceiptFile = (expense) => deleteStoredFile(expense.receipt?.filename);
 
 // Normalise the optional subscription link and make sure it belongs to this workspace.
 const cleanBody = async (body, workspaceId) => {
@@ -115,16 +113,10 @@ export const deleteExpense = async (req, res) => {
 // POST /api/expenses/:id/receipt  (multipart/form-data, field "receipt")
 export const uploadReceipt = async (req, res) => {
   if (!req.file) throw httpError(400, "Please choose a file to upload");
-  let expense;
-  try {
-    expense = await findOwned(req.params.id, req.workspace._id);
-  } catch (err) {
-    await fs.rm(req.file.path, { force: true });
-    throw err;
-  }
+  const expense = await findOwned(req.params.id, req.workspace._id);
   await removeReceiptFile(expense);
   expense.receipt = {
-    filename: req.file.filename,
+    filename: await saveUpload(req.file, { kind: "receipt", owner: req.user._id, workspace: req.workspace._id }),
     originalName: req.file.originalname,
     mimeType: req.file.mimetype,
     size: req.file.size,
@@ -138,9 +130,10 @@ export const uploadReceipt = async (req, res) => {
 export const downloadReceipt = async (req, res) => {
   const expense = await findOwned(req.params.id, req.workspace._id);
   if (!expense.receipt?.filename) throw httpError(404, "No receipt attached");
-  res.type(expense.receipt.mimeType);
-  res.set("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(expense.receipt.originalName)}`);
-  res.sendFile(path.join(RECEIPT_DIR, expense.receipt.filename));
+  await sendStoredFile(res, expense.receipt.filename, {
+    kind: "receipt",
+    disposition: `inline; filename*=UTF-8''${encodeURIComponent(expense.receipt.originalName)}`,
+  });
 };
 
 // DELETE /api/expenses/:id/receipt

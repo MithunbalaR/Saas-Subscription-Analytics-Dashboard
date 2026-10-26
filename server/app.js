@@ -4,7 +4,8 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
-import { AVATAR_DIR, CLIENT_DIST } from "./config/paths.js";
+import { CLIENT_DIST } from "./config/paths.js";
+import { sendStoredFile } from "./utils/files.js";
 import openapi from "./docs/openapi.js";
 import authRoutes from "./routes/authRoutes.js";
 import workspaceRoutes from "./routes/workspaceRoutes.js";
@@ -44,7 +45,8 @@ app.use(
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
-app.use("/uploads/avatars", express.static(AVATAR_DIR, { maxAge: "7d" }));
+// Profile pictures are public (stored in MongoDB; ids are random and the content never changes).
+app.get("/uploads/avatars/:id", (req, res, next) => sendStoredFile(res, req.params.id, { kind: "avatar", maxAge: 7 * 24 * 3600 }).catch(next));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

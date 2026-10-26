@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Subscription from "../models/Subscription.js";
 import Expense from "../models/Expense.js";
 import Notification from "../models/Notification.js";
+import StoredFile from "../models/StoredFile.js";
 import { httpError, pick } from "../utils/helpers.js";
 import { notifyUser } from "../utils/notify.js";
 import { createPersonalWorkspace } from "../utils/workspace.js";
@@ -67,6 +68,7 @@ export const deleteWorkspace = async (req, res) => {
     Subscription.deleteMany({ workspace: workspace._id }),
     Expense.deleteMany({ workspace: workspace._id }),
     Notification.deleteMany({ workspace: workspace._id }),
+    StoredFile.deleteMany({ workspace: workspace._id }), // receipts
   ]);
   await workspace.deleteOne();
   res.json({ message: "Workspace deleted" });

@@ -32,7 +32,7 @@ A full-stack **MERN** application (MongoDB, Express, React, Node.js) for trackin
 | **Renewal calendar** | Month grid and agenda of projected renewals. | Date maths, UI |
 | **Export CSV / PDF** | Export subscriptions or a filtered expense report. | File generation |
 | **Forgot password (email OTP)** | 6-digit code, hashed, expires in 10 minutes, limited attempts. | Secure auth flow |
-| **Profile picture upload** | PNG/JPG/WEBP up to 2 MB. | Multer file uploads |
+| **Profile picture upload** | PNG/JPG/WEBP up to 2 MB, stored in MongoDB (like receipts) so uploads survive restarts. | Multer file uploads |
 | **Dark mode** | Light, dark or follow the system setting. | Theming with CSS variables |
 | **Polish** | Toast messages, loading skeletons, 404 page, code-split pages. | UX |
 
@@ -196,12 +196,13 @@ The Express server also serves the built React app, so the whole project is **on
 1. Push the project to GitHub. `.env` is git-ignored.
 2. In MongoDB Atlas → Network Access, allow `0.0.0.0/0`, because Render's IP addresses change.
 3. In Render, choose **New → Blueprint** and pick the repository. `render.yaml` configures everything and generates the JWT secrets.
-4. When asked, paste `MONGO_URI` and, optionally, the SMTP, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` and `VAPID_*` settings.
+4. When asked, paste `MONGO_URI` and, optionally, the SMTP, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `VAPID_*` and `WHATSAPP_PROVIDER=web` settings.
 5. After the first deploy, open the Render shell and run `npm run seed --prefix server` if you want demo data.
 
 Things to know about the free plan:
 - The service sleeps after inactivity, so the first request takes about 30 seconds.
-- Uploaded files are lost when the service restarts. For permanent storage, move uploads to Cloudinary or S3.
+- Scheduled jobs (9:00 reminders, monthly report) only run while the service is awake; reminders also run every time it starts, so they arrive late rather than never.
+- Nothing is stored on the server's disk: receipts, profile pictures and WhatsApp logins live in MongoDB, so they survive restarts and redeploys. WhatsApp reconnects automatically when the service wakes up.
 
 ## API reference
 

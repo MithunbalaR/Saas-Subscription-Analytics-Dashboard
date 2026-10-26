@@ -1,11 +1,9 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import User from "../models/User.js";
 import Workspace from "../models/Workspace.js";
 import Subscription from "../models/Subscription.js";
 import Expense from "../models/Expense.js";
 import Notification from "../models/Notification.js";
-import { AVATAR_DIR } from "../config/paths.js";
+import StoredFile from "../models/StoredFile.js";
 import { round2, toMonthly } from "../utils/billing.js";
 import { convert, getRates } from "../utils/currency.js";
 import { escapeRegex, getPaging, httpError } from "../utils/helpers.js";
@@ -133,7 +131,7 @@ export const deleteUser = async (req, res) => {
     Workspace.deleteMany({ _id: { $in: ownedIds } }),
     Workspace.updateMany({ "members.user": user._id }, { $pull: { members: { user: user._id } } }),
   ]);
-  if (user.avatar) await fs.rm(path.join(AVATAR_DIR, path.basename(user.avatar)), { force: true });
+  await StoredFile.deleteMany({ $or: [{ owner: user._id, kind: "avatar" }, { workspace: { $in: ownedIds } }] });
   if (whatsappConfigured()) await (await import("../utils/whatsappWeb.js")).logoutSession(user._id); // unlink their WhatsApp
   await user.deleteOne();
   res.json({ message: `${user.name} and their data were deleted` });

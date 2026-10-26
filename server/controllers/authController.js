@@ -1,8 +1,6 @@
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
 import User from "../models/User.js";
-import { AVATAR_DIR } from "../config/paths.js";
+import { avatarFileId, deleteStoredFile, saveUpload } from "../utils/files.js";
 import { httpError, pick } from "../utils/helpers.js";
 import { createPersonalWorkspace } from "../utils/workspace.js";
 import { sendEmail } from "../utils/email.js";
@@ -86,16 +84,17 @@ export const updateProfile = async (req, res) => {
 // POST /api/auth/avatar  (multipart/form-data, field "avatar")
 export const uploadAvatar = async (req, res) => {
   if (!req.file) throw httpError(400, "Please choose an image to upload");
-  const previous = req.user.avatar;
-  req.user.avatar = `/uploads/avatars/${req.file.filename}`;
+  const previous = avatarFileId(req.user.avatar);
+  const id = await saveUpload(req.file, { kind: "avatar", owner: req.user._id });
+  req.user.avatar = `/uploads/avatars/${id}`;
   await req.user.save();
-  if (previous) await fs.rm(path.join(AVATAR_DIR, path.basename(previous)), { force: true });
+  await deleteStoredFile(previous);
   res.json({ user: req.user });
 };
 
 // DELETE /api/auth/avatar
 export const removeAvatar = async (req, res) => {
-  if (req.user.avatar) await fs.rm(path.join(AVATAR_DIR, path.basename(req.user.avatar)), { force: true });
+  await deleteStoredFile(avatarFileId(req.user.avatar));
   req.user.avatar = "";
   await req.user.save();
   res.json({ user: req.user });
