@@ -601,6 +601,49 @@ describe("Optional integrations report clearly when not configured", () => {
     expect((await api().post("/api/ai/chat").set(auth(token)).send({ messages: [] })).status).toBe(400);
   });
 
+  test("the AI assistant skips a Gemini model that stalls, and never hangs", async () => {
+    const realFetch = global.fetch;
+    const enc = new TextEncoder();
+    const stall = (opts) => new Promise((_, reject) => opts.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    const answer = (text) => ({
+      ok: true,
+      body: new ReadableStream({
+        start(c) {
+          c.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] })}\n`));
+          c.close();
+        },
+      }),
+    });
+    const ask = () =>
+      api().post("/api/ai/chat").set(auth(token)).send({ messages: [{ role: "user", content: "How much do I spend per month?" }] }).buffer(true).parse((res, cb) => {
+        let text = "";
+        res.on("data", (c) => (text += c));
+        res.on("end", () => cb(null, text));
+      });
+    Object.assign(process.env, { GEMINI_API_KEY: "test", GEMINI_MODEL: "stalling-model", AI_FIRST_TEXT_MS: "300" });
+    try {
+      // First model stalls -> the backup model answers
+      global.fetch = async (url, opts) => (String(url).includes("stalling-model") ? stall(opts) : answer("Hello from the backup model"));
+      let started = Date.now();
+      let res = await ask();
+      expect(res.body).toMatch(/Hello from the backup model/);
+      expect(res.body).toMatch(/"model":"gemini-flash-latest"/);
+      expect(Date.now() - started).toBeLessThan(5000);
+
+      // Every model stalls -> instant answer from the built-in smart answers instead of waiting forever
+      global.fetch = async (url, opts) => (String(url).includes("generativelanguage") ? stall(opts) : realFetch(url, opts));
+      started = Date.now();
+      res = await ask();
+      expect(res.body).toMatch(/too busy/);
+      expect(res.body).toMatch(/"provider":"basic"/);
+      expect(res.body).toMatch(/event: done/);
+      expect(Date.now() - started).toBeLessThan(5000);
+    } finally {
+      global.fetch = realFetch;
+      for (const key of ["GEMINI_API_KEY", "GEMINI_MODEL", "AI_FIRST_TEXT_MS"]) delete process.env[key];
+    }
+  });
+
   test("emails go through Brevo's HTTP API when BREVO_API_KEY is set", async () => {
     const { sendEmail } = await import("../utils/email.js");
     const realFetch = global.fetch;

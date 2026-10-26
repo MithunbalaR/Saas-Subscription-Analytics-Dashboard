@@ -13,7 +13,8 @@ import { httpError } from "../utils/helpers.js";
 //                  ->  built-in rule-based "smart answers" (always available, no key needed).
 
 const CLAUDE_MODEL = process.env.AI_MODEL || "claude-opus-5";
-const GEMINI_MODELS = [process.env.GEMINI_MODEL || "gemini-flash-latest", "gemini-flash-lite-latest"];
+// The lighter model first: it usually starts answering in about a second, while the bigger one can stall when busy.
+const geminiModels = () => [...new Set([process.env.GEMINI_MODEL || "gemini-flash-lite-latest", "gemini-flash-latest"])];
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_HISTORY = 20;
 const MAX_MESSAGE_CHARS = 4000;
@@ -137,52 +138,89 @@ const streamClaude = async ({ system, messages, signal, onText }) => {
 };
 
 // ---- Google Gemini (REST streaming, free tier) ----
+// A model that hasn't started answering within AI_FIRST_TEXT_MS (15 s) is skipped (the next model is tried, then the
+// built-in smart answers), and no answer may take longer than ANSWER_MS, so the chat never hangs.
+const firstTextMs = () => Number(process.env.AI_FIRST_TEXT_MS || 15000);
+const ANSWER_MS = 90000;
+
 const streamGemini = async ({ system, messages, signal, onText }) => {
   let lastError;
-  for (const model of GEMINI_MODELS) {
-    const response = await fetch(`${GEMINI_URL}/${model}:streamGenerateContent?alt=sse`, {
-      method: "POST",
-      signal,
-      headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: system.map((text) => ({ text })) },
-        contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
-        generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
-      }),
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      lastError = Object.assign(new Error(body.error?.message || `Gemini error ${response.status}`), { status: response.status });
-      if (response.status === 429 || response.status >= 500) continue; // busy or quota used: try the lighter model
-      throw lastError;
-    }
-
-    // Parse the SSE stream: lines of "data: {json}"
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let finishReason;
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newline;
-      while ((newline = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (!line.startsWith("data:")) continue;
-        const chunk = JSON.parse(line.slice(5));
-        const candidate = chunk.candidates?.[0];
-        for (const part of candidate?.content?.parts || []) if (part.text && !part.thought) onText(part.text);
-        finishReason = candidate?.finishReason || finishReason;
+  const limit = firstTextMs();
+  for (const model of geminiModels()) {
+    if (signal.aborted) break;
+    const attempt = new AbortController();
+    const stopAttempt = () => attempt.abort();
+    signal.addEventListener("abort", stopAttempt, { once: true });
+    let gotText = false;
+    let timedOut = false;
+    const firstTextTimer = setTimeout(() => ((timedOut = true), attempt.abort()), limit);
+    const answerTimer = setTimeout(() => ((timedOut = true), attempt.abort()), ANSWER_MS);
+    const cleanup = () => {
+      clearTimeout(firstTextTimer);
+      clearTimeout(answerTimer);
+      signal.removeEventListener("abort", stopAttempt);
+    };
+    try {
+      const response = await fetch(`${GEMINI_URL}/${model}:streamGenerateContent?alt=sse`, {
+        method: "POST",
+        signal: attempt.signal,
+        headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+        body: JSON.stringify({
+          systemInstruction: { parts: system.map((text) => ({ text })) },
+          contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+          generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        lastError = Object.assign(new Error(body.error?.message || `Gemini error ${response.status}`), { status: response.status });
+        if (response.status === 429 || response.status >= 500) continue; // busy or quota used: try the next model
+        throw lastError;
       }
+
+      // Parse the SSE stream: lines of "data: {json}"
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finishReason;
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newline;
+        while ((newline = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (!line.startsWith("data:")) continue;
+          const chunk = JSON.parse(line.slice(5));
+          const candidate = chunk.candidates?.[0];
+          for (const part of candidate?.content?.parts || []) {
+            if (!part.text || part.thought) continue;
+            if (!gotText) clearTimeout(firstTextTimer); // the model is answering: no first-text limit any more
+            gotText = true;
+            onText(part.text);
+          }
+          finishReason = candidate?.finishReason || finishReason;
+        }
+      }
+      if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
+        throw Object.assign(new Error("blocked"), { userMessage: "The assistant can't help with that request. Try asking about your subscriptions or spending." });
+      }
+      return model;
+    } catch (err) {
+      if (signal.aborted) throw err; // the user closed the chat
+      if (timedOut && !gotText) {
+        // Too slow to start (Gemini is overloaded): try the next model, then fall back to smart answers.
+        console.warn(`AI (gemini) ${model} didn't answer within ${limit / 1000}s, trying the next option`);
+        lastError = Object.assign(new Error(`${model} timed out`), { status: 504 });
+        continue;
+      }
+      throw err;
+    } finally {
+      cleanup();
     }
-    if (finishReason === "SAFETY" || finishReason === "PROHIBITED_CONTENT") {
-      throw Object.assign(new Error("blocked"), { userMessage: "The assistant can't help with that request. Try asking about your subscriptions or spending." });
-    }
-    return model;
   }
-  throw lastError;
+  throw lastError || new Error("No Gemini model available");
 };
 
 // POST /api/ai/chat  { messages: [{ role, content }] }  ->  text/event-stream (events: meta, text, error, done)
@@ -225,7 +263,7 @@ export const chat = async (req, res) => {
       // AI unavailable (quota, network, bad key): answer from the data instead of failing.
       console.error(`AI (${provider}) failed, using smart answers:`, err.message);
       send("meta", { provider: "basic", fallback: true });
-      onText(`_The AI service is unavailable right now (${err.status === 429 ? "free quota reached" : "connection problem"}), so here's a quick answer from your data:_\n\n`);
+      onText(`_The AI service is unavailable right now (${err.status === 429 ? "free quota reached" : err.status === 504 ? "it is too busy" : "connection problem"}), so here's a quick answer from your data:_\n\n`);
       onText(smartAnswer(messages.at(-1).content, snapshot));
     } else {
       console.error(`AI (${provider}) failed mid-answer:`, err.message);

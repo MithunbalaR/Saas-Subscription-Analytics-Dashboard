@@ -11,6 +11,14 @@ import makeWASocket, { Browsers, DisconnectReason } from "@whiskeysockets/bailey
 import { SERVER_ROOT } from "../config/paths.js";
 import { clearAuthState, importFolderSessions, linkedUserIds, useMongoAuthState } from "./whatsappAuthStore.js";
 
+// libsignal (used by Baileys) prints whole Signal session records ("Closing session: {...}") with console.info/warn.
+// They contain encryption keys and flood the server logs, so only those messages are dropped.
+const LIBSIGNAL_NOISE = /^(Closing session|Opening session|Closing open session|Removing old closed session|Migrating session|Session already (closed|open)|Decrypted message with closed session)/;
+for (const level of ["info", "warn", "log"]) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => (typeof args[0] === "string" && LIBSIGNAL_NOISE.test(args[0]) ? undefined : original(...args));
+}
+
 const LEGACY_SESSIONS_DIR = process.env.WHATSAPP_SESSION_DIR || path.join(SERVER_ROOT, "whatsapp-session");
 const RECONNECT_MS = 5000;
 
