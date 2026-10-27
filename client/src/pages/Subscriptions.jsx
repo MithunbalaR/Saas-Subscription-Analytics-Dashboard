@@ -106,10 +106,10 @@ export default function Subscriptions() {
     const columns = [
       { label: "Service", value: (s) => s.name },
       { label: "Category", value: (s) => s.category },
-      { label: "Cost", value: (s) => formatMoneyCode(s.cost, s.currency), csv: (s) => s.cost, align: "right" },
+      { label: "Cost", value: (s) => formatMoneyCode(s.cost, s.currency), csv: (s) => s.cost },
       { label: "Currency", value: (s) => s.currency },
       { label: "Billing", value: (s) => capitalize(s.billingCycle) },
-      { label: `Per month (${currency})`, value: (s) => formatMoneyCode(s.monthlyCostBase, currency), csv: (s) => s.monthlyCostBase, align: "right" },
+      { label: `Per month (${currency})`, value: (s) => formatMoneyCode(s.monthlyCostBase, currency), csv: (s) => s.monthlyCostBase },
       { label: "Next renewal", value: (s) => formatDate(s.nextRenewal), csv: (s) => toInputDate(s.nextRenewal) },
       { label: "Status", value: (s) => capitalize(s.status) },
     ];

@@ -117,7 +117,7 @@ export default function Expenses() {
       { label: "Title", value: (e) => e.title },
       { label: "Category", value: (e) => e.category },
       { label: "Subscription", value: (e) => e.subscription?.name || "" },
-      { label: "Amount", value: (e) => formatMoneyCode(e.amount, e.currency), csv: (e) => e.amount, align: "right" },
+      { label: "Amount", value: (e) => formatMoneyCode(e.amount, e.currency), csv: (e) => e.amount },
       { label: "Currency", value: (e) => e.currency },
     ];
     const filename = `expenses-${fileStamp()}`;

@@ -1,5 +1,5 @@
 // Client-side CSV and PDF export.
-// columns: [{ label, value: (row) => displayValue, csv?: (row) => rawValue, align?: "right" }]
+// columns: [{ label, value: (row) => displayValue, csv?: (row) => rawValue }]
 
 const triggerDownload = (blob, filename) => {
   const url = URL.createObjectURL(blob);
@@ -35,9 +35,7 @@ export const downloadPDF = async (filename, { title, subtitle, columns, rows, fo
   doc.setTextColor(110);
   doc.text(subtitle, 14, 25);
 
-  const rightAligned = Object.fromEntries(
-    columns.map((c, i) => [i, c.align === "right" ? { halign: "right" } : {}])
-  );
+  // Every column is left-aligned, so each value (amounts included) starts right under its heading.
   autoTable(doc, {
     startY: 31,
     head: [columns.map((c) => c.label)],
@@ -46,12 +44,6 @@ export const downloadPDF = async (filename, { title, subtitle, columns, rows, fo
     styles: { fontSize: 9, cellPadding: 2.5 },
     headStyles: { fillColor: [42, 120, 214] },
     footStyles: { fillColor: [240, 239, 236], textColor: 20, fontStyle: "bold" },
-    columnStyles: rightAligned,
-    // columnStyles only applies to body cells: align each header (and footer) cell with its column too,
-    // so "Cost" sits above right-aligned amounts instead of at the left edge.
-    didParseCell: ({ section, column, cell }) => {
-      if (section !== "body" && columns[column.index]?.align === "right") cell.styles.halign = "right";
-    },
     didDrawPage: () => {
       doc.setFontSize(8);
       doc.setTextColor(150);
