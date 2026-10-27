@@ -66,11 +66,10 @@ export default function Subscriptions() {
   const handleSave = async (form) => {
     const { data } = editing._id ? await api.put(`/subscriptions/${editing._id}`, form) : await api.post("/subscriptions", form);
     const emailed = data.splitEmailsSent || 0;
-    const whatsapped = data.splitWhatsAppsSent || 0;
-    const sentVia = [emailed && `${emailed} by email`, whatsapped && `${whatsapped} on WhatsApp`].filter(Boolean).join(" and ");
-    toast.success(`${form.name} ${editing._id ? "updated" : "added"}` + (sentVia ? `. Share details sent: ${sentVia}.` : ""), {
-      duration: sentVia ? 5000 : 3000,
-    });
+    toast.success(
+      `${form.name} ${editing._id ? "updated" : "added"}` + (emailed ? `. Share details emailed to ${emailed} ${emailed === 1 ? "person" : "people"}.` : ""),
+      { duration: emailed ? 5000 : 3000 }
+    );
     setEditing(null);
     load();
   };

@@ -39,9 +39,9 @@ export default function Register() {
           <input id="email" name="email" type="email" autoComplete="email" className="input" required value={form.email} onChange={update} />
         </div>
         <div>
-          <label htmlFor="phone" className="label">Phone number (WhatsApp)</label>
+          <label htmlFor="phone" className="label">Phone number</label>
           <input id="phone" name="phone" type="tel" autoComplete="tel" placeholder="+91 98765 43210" className="input" value={form.phone} onChange={update} />
-          <p className="mt-1 text-xs text-stone-500">Optional. Get renewal reminders and split messages on WhatsApp.</p>
+          <p className="mt-1 text-xs text-stone-500">Optional. Include the country code.</p>
         </div>
         <div>
           <label htmlFor="password" className="label">Password</label>

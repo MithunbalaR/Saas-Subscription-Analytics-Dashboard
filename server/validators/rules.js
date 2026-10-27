@@ -16,7 +16,7 @@ export const paging = [
   query("order").optional().isIn(["asc", "desc"]).withMessage("order must be asc or desc"),
 ];
 
-// Optional WhatsApp number: normalised to E.164 ("98765 43210" -> "+919876543210"), empty clears it.
+// Optional phone number: normalised to E.164 ("98765 43210" -> "+919876543210"), empty clears it.
 const phone = (field = "phone") =>
   body(field)
     .optional({ values: "null" })
@@ -50,7 +50,6 @@ export const changePasswordRules = [
 export const profileRules = [
   body("name").optional().trim().notEmpty().withMessage("Name cannot be empty").isLength({ max: 60 }),
   body("emailReminders").optional().isBoolean().withMessage("emailReminders must be true or false").toBoolean(),
-  body("whatsappNotifications").optional().isBoolean().withMessage("whatsappNotifications must be true or false").toBoolean(),
   phone(),
   body("reminderDays").optional().isInt({ min: 1, max: 30 }).withMessage("Reminder days must be 1-30").toInt(),
   body("language").optional().isIn(["en", "hi", "ta"]).withMessage("Unsupported language"),

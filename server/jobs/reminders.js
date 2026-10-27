@@ -44,7 +44,7 @@ const remindMembers = async (sub, today) => {
         workspace: sub.workspace._id,
         dedupeKey: `renewal:${sub._id}:${dateKey}`,
       },
-      { email: user.emailReminders, whatsapp: true }
+      { email: user.emailReminders }
     );
     if (isNew) created += 1;
   }

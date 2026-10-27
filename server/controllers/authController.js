@@ -8,7 +8,6 @@ import { clearRefreshCookie, issueSession, readRefreshCookie, verifyRefreshToken
 import { completeLogin } from "./twoFactorController.js";
 import { pushConfigured } from "../utils/push.js";
 import { aiProvider } from "./aiController.js";
-import { whatsappConfigured } from "../utils/whatsapp.js";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -38,7 +37,6 @@ export const getConfig = (req, res) => {
     vapidPublicKey: pushConfigured() ? process.env.VAPID_PUBLIC_KEY : null,
     aiEnabled: true, // the assistant always works: Claude, Gemini, or built-in smart answers
     aiProvider: aiProvider(),
-    whatsappEnabled: whatsappConfigured(),
   });
 };
 
@@ -76,7 +74,7 @@ export const getMe = async (req, res) => {
 
 // PUT /api/auth/profile
 export const updateProfile = async (req, res) => {
-  req.user.set(pick(req.body, ["name", "emailReminders", "reminderDays", "language", "phone", "whatsappNotifications"]));
+  req.user.set(pick(req.body, ["name", "emailReminders", "reminderDays", "language", "phone"]));
   await req.user.save();
   res.json({ user: req.user });
 };

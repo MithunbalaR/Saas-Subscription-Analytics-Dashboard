@@ -17,7 +17,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY server/ ./
 COPY --from=client-build /app/client/dist /app/client/dist
 
-# Run as the unprivileged "node" user. Uploads and WhatsApp logins are stored in MongoDB, so no volume is needed.
+# Run as the unprivileged "node" user. Uploads are stored in MongoDB, so no volume is needed.
 USER node
 
 EXPOSE 5000

@@ -8,7 +8,6 @@ import { round2, toMonthly } from "../utils/billing.js";
 import { convert, getRates } from "../utils/currency.js";
 import { escapeRegex, getPaging, httpError } from "../utils/helpers.js";
 import { runRenewalReminders } from "../jobs/reminders.js";
-import { whatsappConfigured } from "../utils/whatsapp.js";
 import { sendMonthlyReports } from "../jobs/monthlyReport.js";
 
 const PLATFORM_CURRENCY = "INR";
@@ -132,7 +131,6 @@ export const deleteUser = async (req, res) => {
     Workspace.updateMany({ "members.user": user._id }, { $pull: { members: { user: user._id } } }),
   ]);
   await StoredFile.deleteMany({ $or: [{ owner: user._id, kind: "avatar" }, { workspace: { $in: ownedIds } }] });
-  if (whatsappConfigured()) await (await import("../utils/whatsappWeb.js")).logoutSession(user._id); // unlink their WhatsApp
   await user.deleteOne();
   res.json({ message: `${user.name} and their data were deleted` });
 };

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { BellRing, Camera, MessageCircle, Monitor, Moon, ShieldCheck, Sun, Trash2 } from "lucide-react";
+import { BellRing, Camera, Monitor, Moon, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import api, { getErrorMessage } from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useConfig } from "../context/ConfigContext.jsx";
@@ -86,9 +86,9 @@ function ProfileSection() {
             <input id="email" className="input" value={user.email} disabled />
           </div>
           <div>
-            <label htmlFor="phone" className="label">Phone number (WhatsApp)</label>
+            <label htmlFor="phone" className="label">Phone number</label>
             <input id="phone" type="tel" autoComplete="tel" placeholder="+91 98765 43210" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            <p className="mt-1 text-xs text-stone-500">Include the country code. Leave empty to stop WhatsApp messages.</p>
+            <p className="mt-1 text-xs text-stone-500">Optional. Include the country code.</p>
           </div>
         </div>
         <button type="submit" className="btn btn-primary" disabled={busy}>Save profile</button>
@@ -99,16 +99,11 @@ function ProfileSection() {
 
 function NotificationSection() {
   const { user, updateProfile } = useAuth();
-  const { whatsappEnabled } = useConfig();
-  const [form, setForm] = useState({
-    emailReminders: user.emailReminders,
-    whatsappNotifications: user.whatsappNotifications ?? true,
-    reminderDays: user.reminderDays,
-  });
+  const [form, setForm] = useState({ emailReminders: user.emailReminders, reminderDays: user.reminderDays });
   const [busy, save] = useSaver();
 
   return (
-    <Section title="Reminders" description="Renewal reminders and payment confirmations appear in the bell and, if enabled, by email and WhatsApp. Budget alerts are sent at 80% and 100%.">
+    <Section title="Reminders" description="Renewal reminders and payment confirmations appear in the bell and, if enabled, by email. Budget alerts are sent at 80% and 100%.">
       <form onSubmit={(e) => { e.preventDefault(); save(() => updateProfile(form), "Reminder settings saved"); }} className="space-y-5">
         <Toggle
           label="Email me reminders, renewal confirmations and budget alerts"
@@ -116,17 +111,6 @@ function NotificationSection() {
           checked={form.emailReminders}
           onChange={(v) => setForm({ ...form, emailReminders: v })}
         />
-        <Toggle
-          label="Send the same alerts to WhatsApp"
-          description={user.phone || "Add your phone number in Profile above to receive WhatsApp messages."}
-          checked={form.whatsappNotifications}
-          onChange={(v) => setForm({ ...form, whatsappNotifications: v })}
-        />
-        {user.phone && !whatsappEnabled && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            WhatsApp isn't enabled on the server yet, so messages are only written to the server log.
-          </p>
-        )}
         <div className="max-w-xs">
           <label htmlFor="reminderDays" className="label">Remind me this many days before a renewal</label>
           <input id="reminderDays" type="number" min={1} max={30} className="input" value={form.reminderDays} onChange={(e) => setForm({ ...form, reminderDays: Number(e.target.value) })} />
@@ -480,91 +464,6 @@ function PushSection() {
   );
 }
 
-// Link your own WhatsApp (like WhatsApp Web) so SubTrack can send your alerts and your split messages from your number.
-function WhatsAppSection() {
-  const { user } = useAuth();
-  const [info, setInfo] = useState(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(() => {
-    api.get("/auth/whatsapp").then(({ data }) => setInfo(data)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // While linking, refresh often: QR codes expire after about 20 seconds.
-  const waiting = info?.status === "qr" || info?.status === "connecting";
-  useEffect(() => {
-    if (!waiting) return;
-    const timer = setInterval(load, 3000);
-    return () => clearInterval(timer);
-  }, [waiting, load]);
-
-  const run = async (request, success) => {
-    setBusy(true);
-    try {
-      const { data } = await request();
-      if (success) toast.success(data.message || success);
-      load();
-    } catch (err) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!info) return null;
-  return (
-    <Section title="WhatsApp" description="Link your WhatsApp to send your reminders to yourself and your cost-split messages to friends, from your own number.">
-      {!info.enabled && <p className="text-sm text-stone-500">WhatsApp messaging isn't enabled on this server.</p>}
-
-      {info.enabled && info.status === "connected" && (
-        <div className="space-y-4">
-          <p className="flex items-center gap-2 text-sm">
-            <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Connected</span>
-            <span className="text-stone-600">{info.number}</span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(() => api.post("/auth/whatsapp/test"), "Test message sent")}>
-              <MessageCircle className="size-4" /> Send me a test message
-            </button>
-            <button
-              className="btn btn-secondary btn-sm"
-              disabled={busy}
-              onClick={() => window.confirm("Disconnect your WhatsApp from SubTrack?") && run(() => api.post("/auth/whatsapp/logout"), "WhatsApp disconnected")}
-            >
-              Disconnect
-            </button>
-          </div>
-          {!user.phone && <p className="text-xs text-amber-700">Add your phone number in Profile to receive your own alerts on WhatsApp.</p>}
-          <p className="text-xs text-stone-500">Keep your phone online. This is an unofficial connection; WhatsApp may restrict numbers that send automated messages.</p>
-        </div>
-      )}
-
-      {info.enabled && info.status === "qr" && info.qr && (
-        <div className="flex flex-wrap items-center gap-5">
-          <img src={info.qr} alt="WhatsApp link QR code" className="size-48 rounded-lg border border-stone-200 bg-white p-2" />
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-stone-600">
-            <li>Open WhatsApp on your phone.</li>
-            <li>Tap <b>⋮ / Settings → Linked devices → Link a device</b>.</li>
-            <li>Point your phone at this QR code. It refreshes automatically.</li>
-          </ol>
-        </div>
-      )}
-
-      {info.enabled && info.status === "connecting" && <p className="text-sm text-stone-500">Connecting to WhatsApp…</p>}
-
-      {info.enabled && (info.status === "stopped" || info.status === "disabled") && (
-        <button className="btn btn-primary" disabled={busy} onClick={() => run(() => api.post("/auth/whatsapp/link"))}>
-          <MessageCircle className="size-4" /> Link WhatsApp
-        </button>
-      )}
-    </Section>
-  );
-}
-
 export default function Settings() {
   const { t } = useI18n();
   return (
@@ -574,7 +473,6 @@ export default function Settings() {
         <ProfileSection />
         <SecuritySection />
         <NotificationSection />
-        <WhatsAppSection />
         <PushSection />
         <LanguageSection />
         <AppearanceSection />

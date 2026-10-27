@@ -12,14 +12,13 @@ process.env.JWT_SECRET = "test-secret";
 process.env.JWT_REFRESH_SECRET = "test-refresh-secret";
 process.env.RATES_OFFLINE = "true";
 
-let mongo, app, outbox, whatsappOutbox, User, Notification;
+let mongo, app, outbox, User, Notification;
 
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
   await mongoose.connect(mongo.getUri("subtrack-test"));
   ({ default: app } = await import("../app.js"));
   ({ outbox } = await import("../utils/email.js"));
-  ({ whatsappOutbox } = await import("../utils/whatsapp.js"));
   ({ default: User } = await import("../models/User.js"));
   ({ default: Notification } = await import("../models/Notification.js"));
   await Notification.syncIndexes();
@@ -580,7 +579,7 @@ describe("Optional integrations report clearly when not configured", () => {
 
   test("config endpoint says what is available", async () => {
     const res = await api().get("/api/auth/config").expect(200);
-    expect(res.body).toEqual({ vapidPublicKey: null, aiEnabled: true, aiProvider: "basic", whatsappEnabled: false });
+    expect(res.body).toEqual({ vapidPublicKey: null, aiEnabled: true, aiProvider: "basic" });
   });
 
   test("without any AI key the assistant still answers from the data (smart answers)", async () => {
@@ -688,18 +687,15 @@ describe("Optional integrations report clearly when not configured", () => {
   });
 });
 
-describe("WhatsApp notifications", () => {
+describe("Phone numbers", () => {
   const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
-  const whatsappTo = (before, to) => whatsappOutbox.slice(before).filter((m) => m.to === to);
-  let token, nilaId;
+  let token;
 
   beforeAll(async () => {
     const res = await api().post("/api/auth/register").send({ name: "Nila", email: "nila@test.com", password: "secret123", phone: "98765 43210" });
     expect(res.status).toBe(201);
     expect(res.body.user.phone).toBe("+919876543210"); // 10-digit numbers default to India (+91)
-    expect(res.body.user.whatsappNotifications).toBe(true);
     token = res.body.accessToken;
-    nilaId = res.body.user._id;
   });
 
   test("phone numbers are validated and can be changed or cleared in the profile", async () => {
@@ -711,128 +707,27 @@ describe("WhatsApp notifications", () => {
     expect(res.body.user.phone).toBe("+447700900123");
     res = await api().put("/api/auth/profile").set(auth(token)).send({ phone: "" }).expect(200);
     expect(res.body.user.phone).toBe("");
-    res = await api().put("/api/auth/profile").set(auth(token)).send({ phone: "9876543210" }).expect(200);
-    expect(res.body.user.phone).toBe("+919876543210");
   });
 
-  test("split participants with a phone get WhatsApp messages, and the creator gets a copy", async () => {
-    const before = whatsappOutbox.length;
+  test("split participants keep their phone number; messages go by email only", async () => {
+    const before = outbox.length;
     const created = await api().post("/api/subscriptions").set(auth(token)).send({
       name: "Hotstar",
       cost: 900,
       billingCycle: "quarterly",
       nextRenewal: inDays(40),
-      splitWith: [{ name: "Ilaya", phone: "9123456780", share: 50 }],
+      splitWith: [{ name: "Ilaya", email: "ilaya@test.com", phone: "9123456780", share: 50 }],
     });
     expect(created.status).toBe(201);
     expect(created.body.splitWith[0].phone).toBe("+919123456780");
-    expect(created.body.splitWhatsAppsSent).toBe(1);
-    expect(created.body.splitEmailsSent).toBe(0);
-
-    const [toIlaya] = whatsappTo(before, "+919123456780");
-    expect(toIlaya.from).toBe(nilaId); // sent from the WhatsApp of the person who added Ilaya
-    expect(toIlaya.body).toMatch(/^\*Nila added you to the Hotstar cost split: you pay ₹450\.00 per quarter\*/);
-    const [copy] = whatsappTo(before, "+919876543210");
-    expect(copy.from).toBe(nilaId); // your own alerts come from your own WhatsApp
-    expect(copy.body).toMatch(/\*You added Hotstar\*/);
-    expect(copy.body).toMatch(/Ilaya: 50% = ₹450\.00 per quarter \(WhatsApp \+919123456780\)/);
-
-    // Editing something unrelated sends nothing; changing the price messages Ilaya again
-    let mark = whatsappOutbox.length;
-    await api().put(`/api/subscriptions/${created.body._id}`).set(auth(token)).send({ notes: "cricket" }).expect(200);
-    expect(whatsappOutbox.length).toBe(mark);
-    const res = await api().put(`/api/subscriptions/${created.body._id}`).set(auth(token)).send({ cost: 1000 }).expect(200);
-    expect(res.body.splitWhatsAppsSent).toBe(1);
-    expect(whatsappTo(mark, "+919123456780")[0].body).toMatch(/Your share of Hotstar has changed: ₹500\.00 per quarter/);
-
-    // Paying creates a balance; the share and the "Remind" button go to WhatsApp
-    await api().put(`/api/subscriptions/${created.body._id}`).set(auth(token)).send({ nextRenewal: inDays(1) }).expect(200);
-    mark = whatsappOutbox.length;
-    await api().post(`/api/subscriptions/${created.body._id}/pay`).set(auth(token)).expect(201);
-    expect(whatsappTo(mark, "+919123456780").some((m) => /Your share of Hotstar: ₹500\.00/.test(m.body))).toBe(true);
-    expect(whatsappTo(mark, "+919876543210").some((m) => /Hotstar renewed/.test(m.body))).toBe(true); // payment confirmation
-
-    const split = (await api().get("/api/splits").set(auth(token))).body.items.find((s) => s.debtorName === "Ilaya");
-    expect(split.debtorPhone).toBe("+919123456780");
-    mark = whatsappOutbox.length;
-    const reminded = await api().post(`/api/splits/${split._id}/remind`).set(auth(token)).expect(200);
-    expect(reminded.body.message).toBe("Reminder sent to WhatsApp +919123456780");
-    expect(whatsappTo(mark, "+919123456780")[0].body).toMatch(/Reminder: your share of Hotstar/);
+    expect(created.body.splitEmailsSent).toBe(1);
+    expect(created.body.splitWhatsAppsSent).toBeUndefined();
+    expect(outbox.slice(before).some((m) => m.to === "ilaya@test.com" && /added you to the Hotstar cost split/.test(m.subject))).toBe(true);
   });
 
-  test("renewal reminders go to WhatsApp unless the user turns it off", async () => {
-    let before = whatsappOutbox.length;
-    await api().post("/api/subscriptions").set(auth(token)).send({ name: "Zee5", cost: 99, nextRenewal: inDays(1) }).expect(201);
-    expect(whatsappTo(before, "+919876543210").some((m) => /\*Zee5 renews in 1 day\*/.test(m.body))).toBe(true);
-
-    await api().put("/api/auth/profile").set(auth(token)).send({ whatsappNotifications: false }).expect(200);
-    before = whatsappOutbox.length;
-    await api().post("/api/subscriptions").set(auth(token)).send({ name: "SonyLIV", cost: 299, nextRenewal: inDays(1) }).expect(201);
-    expect(whatsappTo(before, "+919876543210")).toHaveLength(0);
-    // The in-app notification still arrives
-    const notes = (await api().get("/api/notifications").set(auth(token))).body.items;
-    expect(notes.some((n) => n.title === "SonyLIV renews in 1 day")).toBe(true);
-  });
-
-  test("each user manages their own WhatsApp link (disabled without WHATSAPP_PROVIDER=web)", async () => {
-    expect((await api().get("/api/auth/whatsapp")).status).toBe(401);
-    const res = await api().get("/api/auth/whatsapp").set(auth(token)).expect(200);
-    expect(res.body).toEqual({ enabled: false, status: "disabled", qr: null, number: null });
-    for (const action of ["link", "logout", "test"]) {
-      const r = await api().post(`/api/auth/whatsapp/${action}`).set(auth(token));
-      expect(r.status).toBe(400);
-      expect(r.body.message).toMatch(/isn't enabled/);
-    }
-    // The old shared admin link is gone
-    expect((await api().get("/api/admin/whatsapp").set(auth(token))).status).toBe(403);
-  });
-
-  test("WhatsApp logins are stored in MongoDB, survive restarts and can be imported from the old folder format", async () => {
-    const { useMongoAuthState, linkedUserIds, clearAuthState, importFolderSessions } = await import("../utils/whatsappAuthStore.js");
-    const userId = new mongoose.Types.ObjectId();
-
-    // A login whose QR code was never scanned isn't restored (and is cleaned up)
-    let { state, saveCreds } = await useMongoAuthState(userId);
-    expect(state.creds.me).toBeUndefined();
-    await saveCreds();
-    expect(await linkedUserIds()).not.toContain(String(userId));
-
-    // After a successful scan (creds.me is set) everything reloads, including binary keys
-    ({ state, saveCreds } = await useMongoAuthState(userId));
-    state.creds.me = { id: "919800000000:1@s.whatsapp.net" };
-    await saveCreds();
-    await state.keys.set({ "pre-key": { 1: { public: Buffer.from([1, 2, 3]), private: Buffer.from([4, 5, 6]) } } });
-    const reloaded = (await useMongoAuthState(userId)).state;
-    expect(reloaded.creds.me.id).toBe("919800000000:1@s.whatsapp.net");
-    expect(reloaded.creds.noiseKey.private).toBeInstanceOf(Uint8Array);
-    const keys = await reloaded.keys.get("pre-key", ["1", "2"]);
-    expect([...keys["1"].public]).toEqual([1, 2, 3]);
-    expect(keys["2"]).toBeNull();
-    await reloaded.keys.set({ "pre-key": { 1: null } });
-    expect((await reloaded.keys.get("pre-key", ["1"]))["1"]).toBeNull();
-    expect(await linkedUserIds()).toContain(String(userId));
-    await clearAuthState(userId);
-    expect(await linkedUserIds()).not.toContain(String(userId));
-
-    // One-time import of a login saved as files by the earlier version
-    const fs = await import("node:fs/promises");
-    const os = await import("node:os");
-    const path = await import("node:path");
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "wa-"));
-    const legacyUser = String(new mongoose.Types.ObjectId());
-    await fs.mkdir(path.join(dir, legacyUser));
-    await fs.writeFile(path.join(dir, legacyUser, "creds.json"), JSON.stringify({ me: { id: "919811111111:2@s.whatsapp.net" } }));
-    await fs.writeFile(path.join(dir, legacyUser, "pre-key-7.json"), JSON.stringify({ keyId: 7 }));
-    await importFolderSessions(dir);
-    expect(await linkedUserIds()).toContain(legacyUser);
-    expect((await useMongoAuthState(legacyUser)).state.creds.me.id).toBe("919811111111:2@s.whatsapp.net");
-    await expect(fs.access(path.join(dir, legacyUser))).rejects.toThrow(); // folder removed after the import
-    await clearAuthState(legacyUser);
-    await fs.rm(dir, { recursive: true, force: true });
-  });
-
-  test("config reports that WhatsApp isn't enabled", async () => {
-    const res = await api().get("/api/auth/config").expect(200);
-    expect(res.body.whatsappEnabled).toBe(false);
+  test("WhatsApp has been removed", async () => {
+    expect((await api().get("/api/auth/whatsapp").set(auth(token))).status).toBe(404);
+    const config = await api().get("/api/auth/config").expect(200);
+    expect(config.body).not.toHaveProperty("whatsappEnabled");
   });
 });

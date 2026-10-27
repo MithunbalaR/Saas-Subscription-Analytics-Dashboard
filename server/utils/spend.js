@@ -53,7 +53,7 @@ export const checkBudgetAlerts = async (workspaceId) => {
         await notifyUser(
           user,
           { type: "budget", title, message, link: "/", workspace: workspace._id, dedupeKey: `budget:${workspace._id}:${key}:${row.key}:${level}` },
-          { email: user.emailReminders, whatsapp: true }
+          { email: user.emailReminders }
         );
       }
     }

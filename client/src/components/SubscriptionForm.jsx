@@ -48,7 +48,7 @@ function SplitEditor({ parts, cost, currency, onChange }) {
         <div>
           <p className="text-sm font-medium text-stone-700">Split the cost</p>
           <p className="text-xs text-stone-500">
-            Family plan or shared tool? Each payment records who owes you. People with an email or WhatsApp number get a message with their share.
+            Family plan or shared tool? Each payment records who owes you. People with an email get a message with their share.
           </p>
         </div>
         <button type="button" className="btn btn-secondary btn-sm" onClick={addPerson} disabled={parts.length >= 10}>
@@ -69,7 +69,7 @@ function SplitEditor({ parts, cost, currency, onChange }) {
               </button>
               <div className="col-span-3 grid gap-2 sm:grid-cols-2">
                 <input className="input" type="email" placeholder="Email (optional)" aria-label={`Person ${i + 1} email`} value={p.email} onChange={(e) => setPart(i, "email", e.target.value)} />
-                <input className="input" type="tel" placeholder="WhatsApp number (optional)" aria-label={`Person ${i + 1} WhatsApp number`} value={p.phone} onChange={(e) => setPart(i, "phone", e.target.value)} />
+                <input className="input" type="tel" placeholder="Phone (optional)" aria-label={`Person ${i + 1} phone number`} value={p.phone} onChange={(e) => setPart(i, "phone", e.target.value)} />
               </div>
             </div>
           ))}

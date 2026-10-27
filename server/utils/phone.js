@@ -1,4 +1,4 @@
-// Phone numbers are stored in E.164 format (e.g. +919876543210), which WhatsApp/Twilio require.
+// Phone numbers are stored in the international E.164 format (e.g. +919876543210).
 // A plain 10-digit number is treated as Indian (+91) unless DEFAULT_COUNTRY_CODE says otherwise.
 const E164 = /^\+[1-9]\d{7,14}$/;
 

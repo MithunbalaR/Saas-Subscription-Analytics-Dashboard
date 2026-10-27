@@ -25,7 +25,6 @@ A full-stack **MERN** application (MongoDB, Express, React, Node.js) for trackin
 | **Budgets and alerts** | An overall monthly budget plus a budget per category. Members are alerted at 80% and 100%. | Aggregation, event-driven notifications |
 | **Notifications bell** | In-app notifications for renewals, budgets and team invites. Unread badge, mark as read. | Polling, REST design |
 | **Email renewal reminders** | A daily scheduled job emails members N days before a renewal. Each reminder is sent only once. | node-cron, Nodemailer |
-| **WhatsApp messages** | Everything that is emailed (reminders, payment confirmations, price hikes, budget alerts, split shares and reminders, the monthly summary) is also sent on WhatsApp to users who add a phone number, and to split participants with a WhatsApp number. Users can switch it off in Settings. | Baileys (WhatsApp linked device), E.164 phone validation |
 | **Team workspaces** | Create a team workspace, add members by email, share subscriptions and expenses. The owner manages settings. | Multi-tenant data model, authorisation |
 | **Admin panel** | Platform stats, sign-ups chart, most popular tools, user management (change role, delete user), run the reminder job on demand. | Role-based access control |
 | **Multi-currency** | Each subscription or expense can use its own currency (INR, USD, EUR, GBP, AUD, CAD, SGD). Analytics convert everything to the workspace currency using live ECB exchange rates. | Third-party API, caching |
@@ -44,7 +43,7 @@ A full-stack **MERN** application (MongoDB, Express, React, Node.js) for trackin
 | **Auto logos** | Each subscription shows its brand logo, taken from its website. | External image service, CSP |
 | **Free-trial tracker** | Mark a subscription as a trial and get a warning before the first charge. The trial converts to paid when you record the payment. | Scheduled jobs, domain modelling |
 | **Price-hike detection** | Every price change is stored. Increases trigger an alert ("Netflix price went up 30%") and an insight, and the details panel shows a price-history chart. | Data history, change detection |
-| **Cost splitting** | Split a subscription (e.g. a family plan) by percentage. Each payment records who owes you; settle balances, or send email/WhatsApp reminders Splitwise-style. | Relational data, aggregation |
+| **Cost splitting** | Split a subscription (e.g. a family plan) by percentage. Each payment records who owes you; settle balances, or email reminders Splitwise-style. | Relational data, aggregation |
 | **12-month cash-flow forecast** | A chart of every renewal still to be paid over the next 12 months. | Predictive analytics, date maths |
 | **Activity log** | An audit trail per workspace ("Demo paid DigitalOcean · 2 hours ago"), updated live. | Audit logging |
 | **Monthly PDF report** | A server-generated PDF (PDFKit), emailed automatically on the 1st of each month, or downloaded or emailed on demand. | PDF generation, cron, email attachments |
@@ -179,7 +178,6 @@ Each of these switches on automatically when its key is in `server/.env` (restar
 |---|---|---|
 | AI assistant | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → API keys. Uses Claude Opus 5 by default (`AI_MODEL` to change). Each question costs a small amount; limited to 30 questions per user per hour. |
 | Browser push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | `npx web-push generate-vapid-keys` (already generated in this project's `.env`). |
-| WhatsApp | `WHATSAPP_PROVIDER=web` | Restart the server. Each user opens **Settings → WhatsApp → Link WhatsApp** and scans the QR code from WhatsApp → *Linked devices*. Their own alerts are then sent from their number to themselves, and messages to people in their cost splits are sent from their number; recipients don't need to do anything. Unofficial (uses the Baileys library): WhatsApp may ban numbers that send automated messages. Logins are stored per user in `server/whatsapp-session/<userId>/` (git-ignored). |
 
 ## Docker
 
@@ -201,13 +199,13 @@ The Express server also serves the built React app, so the whole project is **on
 1. Push the project to GitHub. `.env` is git-ignored.
 2. In MongoDB Atlas → Network Access, allow `0.0.0.0/0`, because Render's IP addresses change.
 3. In Render, choose **New → Blueprint** and pick the repository. `render.yaml` configures everything and generates the JWT secrets.
-4. When asked, paste `MONGO_URI` and, optionally, the SMTP, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `VAPID_*` and `WHATSAPP_PROVIDER=web` settings.
+4. When asked, paste `MONGO_URI` and, optionally, the SMTP, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` and `VAPID_*` settings.
 5. After the first deploy, open the Render shell and run `npm run seed --prefix server` if you want demo data.
 
 Things to know about the free plan:
 - The service sleeps after inactivity, so the first request takes about 30 seconds.
 - Scheduled jobs (9:00 reminders, monthly report) only run while the service is awake; reminders also run every time it starts, so they arrive late rather than never.
-- Nothing is stored on the server's disk: receipts, profile pictures and WhatsApp logins live in MongoDB, so they survive restarts and redeploys. WhatsApp reconnects automatically when the service wakes up.
+- Nothing is stored on the server's disk: receipts and profile pictures live in MongoDB, so they survive restarts and redeploys.
 
 ## API reference
 

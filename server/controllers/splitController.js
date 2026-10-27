@@ -3,7 +3,6 @@ import Subscription from "../models/Subscription.js";
 import { round2 } from "../utils/billing.js";
 import { formatMoney } from "../utils/currency.js";
 import { sendEmail } from "../utils/email.js";
-import { sendWhatsApp } from "../utils/whatsapp.js";
 import { logActivity } from "../utils/activity.js";
 import { httpError } from "../utils/helpers.js";
 
@@ -87,25 +86,17 @@ export const settleAll = async (req, res) => {
   res.json({ settled: result.modifiedCount });
 };
 
-// POST /api/splits/:id/remind - send the person a friendly reminder by email and/or WhatsApp
+// POST /api/splits/:id/remind - email the person a friendly reminder
 export const remind = async (req, res) => {
   const settlement = await findOwned(req.params.id, req.workspace._id);
   if (settlement.settled) throw httpError(400, "This share is already settled");
-  const { debtorEmail: email, debtorPhone: phone } = settlement;
-  if (!email && !phone) {
-    throw httpError(400, `No email or phone number saved for ${settlement.debtorName}. Edit the subscription's split to add one.`);
-  }
-  const message = {
+  if (!settlement.debtorEmail) throw httpError(400, `No email saved for ${settlement.debtorName}. Edit the subscription's split to add one.`);
+  await sendEmail({
+    to: settlement.debtorEmail,
     subject: `Reminder: your share of ${settlement.subscriptionName}`,
     text:
       `Hi ${settlement.debtorName},\n\nFriendly reminder from ${req.user.name}: your ${settlement.share}% share of ${settlement.subscriptionName} ` +
       `(${formatMoney(settlement.amount, settlement.currency)}) is still pending.\n\nSent by SubTrack.`,
-  };
-  if (email) await sendEmail({ to: email, ...message });
-  const whatsapp = phone ? await sendWhatsApp({ from: req.user._id, to: phone, ...message }) : null;
-  const whatsappSent = whatsapp && whatsapp.reason !== "not-linked";
-  if (!email && !whatsappSent) {
-    throw httpError(400, `Link your WhatsApp in Settings to send ${settlement.debtorName} a WhatsApp reminder, or add their email.`);
-  }
-  res.json({ message: `Reminder sent to ${[email, whatsappSent && `WhatsApp ${phone}`].filter(Boolean).join(" and ")}` });
+  });
+  res.json({ message: `Reminder sent to ${settlement.debtorEmail}` });
 };
