@@ -47,6 +47,11 @@ export const downloadPDF = async (filename, { title, subtitle, columns, rows, fo
     headStyles: { fillColor: [42, 120, 214] },
     footStyles: { fillColor: [240, 239, 236], textColor: 20, fontStyle: "bold" },
     columnStyles: rightAligned,
+    // columnStyles only applies to body cells: align each header (and footer) cell with its column too,
+    // so "Cost" sits above right-aligned amounts instead of at the left edge.
+    didParseCell: ({ section, column, cell }) => {
+      if (section !== "body" && columns[column.index]?.align === "right") cell.styles.halign = "right";
+    },
     didDrawPage: () => {
       doc.setFontSize(8);
       doc.setTextColor(150);
