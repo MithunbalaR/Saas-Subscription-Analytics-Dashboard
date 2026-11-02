@@ -144,9 +144,9 @@ export default function Splits() {
                               <>
                                 <button
                                   className="icon-btn"
-                                  title={s.debtorEmail ? `Email ${s.debtorEmail} a reminder` : "Add an email in the subscription's split to send reminders"}
+                                  title={s.debtorEmail || s.debtorPhone ? `Send ${s.debtorName} a reminder (${[s.debtorEmail, s.debtorPhone && `WhatsApp ${s.debtorPhone}`].filter(Boolean).join(", ")})` : "Add an email or WhatsApp number in the subscription's split to send reminders"}
                                   aria-label={`Remind ${s.debtorName}`}
-                                  disabled={!s.debtorEmail}
+                                  disabled={!s.debtorEmail && !s.debtorPhone}
                                   onClick={() => act(() => api.post(`/splits/${s._id}/remind`))}
                                 >
                                   <Mail className="size-4" />
